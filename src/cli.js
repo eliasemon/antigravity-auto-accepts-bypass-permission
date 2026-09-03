@@ -280,6 +280,59 @@ export async function runCLI(args) {
       break;
     }
 
+    case 'patch-core': {
+      console.log('====================================================');
+      console.log('⚡ Antigravity Native Core Patcher');
+      console.log('====================================================');
+      const { patchDesktopApp, patchIdeApp, getAntigravityAppPaths } = await import('./core-patcher.js');
+      const paths = getAntigravityAppPaths();
+
+      let patchedAny = false;
+
+      if (paths.desktopAppAsar) {
+        try {
+          await patchDesktopApp(paths.desktopAppAsar);
+          patchedAny = true;
+        } catch (err) {
+          console.error(`❌ Failed patching Desktop App: ${err.message}`);
+        }
+      } else {
+        console.log('ℹ️  Antigravity Desktop app.asar not found on this system.');
+      }
+
+      if (paths.ideAgentJs) {
+        try {
+          await patchIdeApp(paths.ideAgentJs);
+          patchedAny = true;
+        } catch (err) {
+          console.error(`❌ Failed patching IDE App: ${err.message}`);
+        }
+      } else {
+        console.log('ℹ️  Antigravity IDE jetskiAgent.js not found on this system.');
+      }
+
+      if (patchedAny) {
+        console.log('\n🎉 Patch complete! Restart Antigravity to activate native core auto-accept.');
+      } else {
+        console.warn('\n⚠️  No Antigravity installations found to patch.');
+      }
+      break;
+    }
+
+    case 'unpatch-core': {
+      console.log('====================================================');
+      console.log('🔄 Reverting Antigravity Core Patches');
+      console.log('====================================================');
+      const { unpatchCore } = await import('./core-patcher.js');
+      try {
+        await unpatchCore();
+        console.log('🎉 Core unpatched! Restart Antigravity to return to stock.');
+      } catch (err) {
+        console.error(`❌ Unpatch failed: ${err.message}`);
+      }
+      break;
+    }
+
     case '--help':
     case '-h':
     case 'help':
@@ -298,6 +351,8 @@ Commands:
   toggle          Instantly toggle pause / resume on running daemon
   pause           Pause auto-accepting
   resume          Resume auto-accepting
+  patch-core      Inject native auto-accept directly into Antigravity core runtime
+  unpatch-core    Revert core runtime back to original factory state
   doctor          Diagnose Antigravity process & remote-debugging-port
   launch          Launch Antigravity with remote debugging port exposed
   config show     Display active configuration
