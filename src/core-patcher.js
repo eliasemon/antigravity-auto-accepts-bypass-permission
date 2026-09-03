@@ -5,14 +5,14 @@ import { execSync } from 'child_process';
 
 export const CORE_ENGINE_CODE = `
 // =========================================================================
-// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE WITH IN-APP TOGGLE BUTTON
+// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE & CHATBOX POPUP TRACKER
 // =========================================================================
 (function initAntigravityCoreAutoAccept() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (window.__antigravityCoreAutoAcceptActive) return;
   window.__antigravityCoreAutoAcceptActive = true;
 
-  console.log('[Antigravity Core] ⚡ Native Auto-Accept Engine & UI Initialized');
+  console.log('[Antigravity Core] ⚡ Native Auto-Accept Engine & Chatbox Modal Tracker Initialized');
 
   // State: persistent in localStorage, defaults to ON
   let isEnabled = localStorage.getItem('antigravity_auto_accept_enabled') !== 'false';
@@ -74,7 +74,7 @@ export const CORE_ENGINE_CODE = `
         toggleBtn.style.color = '#4ade80';
         toggleBtn.style.borderColor = '#16a34a';
         toggleBtn.style.boxShadow = '0 0 14px rgba(74, 222, 128, 0.3), 0 2px 6px rgba(0,0,0,0.3)';
-        toggleBtn.title = 'Auto-Accepting all terminal commands\\n(Except sudo, rm, -rf, drop)\\nClick to Pause';
+        toggleBtn.title = 'Auto-Accepting all terminal commands & chatbox popups\\n(Except sudo, rm, -rf, drop)\\nClick to Pause';
       } else {
         toggleBtn.innerHTML = '⏸️ Auto-Accept: OFF';
         toggleBtn.style.background = '#27272a';
@@ -92,7 +92,7 @@ export const CORE_ENGINE_CODE = `
       localStorage.setItem('antigravity_auto_accept_enabled', isEnabled.toString());
       renderBtn();
       console.log('[Antigravity UI] Auto-Accept toggled:', isEnabled ? 'ON' : 'OFF');
-      if (isEnabled) scanAndExecute();
+      if (isEnabled) scanAndAutoAccept();
     };
 
     renderBtn();
@@ -100,13 +100,15 @@ export const CORE_ENGINE_CODE = `
   }
 
   function clickElement(el) {
+    if (!el) return;
+
     // 1. Direct React Fiber invocation
     try {
       const propsKey = Object.keys(el).find(k => k.startsWith('__reactProps'));
       if (propsKey && el[propsKey] && typeof el[propsKey].onClick === 'function') {
         el[propsKey].onClick({ defaultPrevented: false, preventDefault: () => {}, stopPropagation: () => {} });
       }
-    } catch(e) {}
+    } catch (e) {}
 
     // 2. Full pointer and mouse events
     try {
@@ -123,64 +125,169 @@ export const CORE_ENGINE_CODE = `
       el.dispatchEvent(new MouseEvent('mouseup', eventInit));
       el.dispatchEvent(new MouseEvent('click', eventInit));
       if (typeof el.click === 'function') el.click();
-    } catch(e) {}
+    } catch (e) {}
   }
 
-  function scanAndExecute() {
+  const ACCEPT_WORDS = [
+    'run', 'accept', 'always allow', 'allow', 'approve', 'proceed',
+    'execute', 'confirm', 'yes', 'keep', 'apply', 'submit', 'continue'
+  ];
+  const REJECT_WORDS = ['reject', 'cancel', 'deny', 'skip', 'dismiss', 'no', "don't allow"];
+
+  function isAcceptButton(btn) {
+    if (!btn) return false;
+    if (btn === toggleBtn || (toggleBtn && toggleBtn.contains(btn))) return false;
+    if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') return false;
+
+    const rawText = (btn.innerText || btn.textContent || btn.value || btn.getAttribute('aria-label') || '').trim();
+    if (!rawText) return false;
+
+    const lines = rawText.split(/\\r?\\n/).map(s => s.trim()).filter(Boolean);
+    const firstLine = (lines[0] || '').toLowerCase();
+
+    // Reject check
+    if (REJECT_WORDS.some(rej => firstLine === rej || firstLine.startsWith(rej + ' '))) {
+      return false;
+    }
+
+    // Ran check
+    if (firstLine === 'ran' || firstLine === 'running') {
+      return false;
+    }
+
+    // Accept keywords check
+    for (const acc of ACCEPT_WORDS) {
+      if (
+        firstLine === acc ||
+        firstLine.startsWith(acc + ' ') ||
+        firstLine.startsWith(acc + ':') ||
+        firstLine.startsWith(acc + '\\n') ||
+        rawText.toLowerCase() === acc
+      ) {
+        return true;
+      }
+    }
+
+    // Child elements check
+    const childSpans = btn.querySelectorAll('span, b, strong');
+    for (const sp of childSpans) {
+      const spText = (sp.innerText || sp.textContent || '').trim().toLowerCase();
+      if (ACCEPT_WORDS.includes(spText)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function isInsideSidebar(el) {
+    if (!el) return false;
+    const excluded = [
+      '.sidebar', 'aside', 'nav', '[role="navigation"]',
+      '[data-testid*="sidebar"]', '[data-testid="conversation-row-sidebar"]',
+      '[data-testid*="history"]', '[class*="sidebar"]', '[class*="conversation-list"]',
+      '[class*="history-list"]', '.explorer-viewlet', '.activitybar'
+    ];
+    return Boolean(el.closest(excluded.join(', ')));
+  }
+
+  function scanAndAutoAccept() {
     mountToggleButton();
     if (!isEnabled) return;
 
-    // Find all run buttons and command steps
-    const candidates = [];
+    // =========================================================================
+    // 1. TRACK POPUP MODAL ON CHATBOX & MODAL OVERLAYS
+    // =========================================================================
+    const popupSelectors = [
+      '[data-testid="agent-input-box"]',
+      '[data-testid="running-items-panel"]',
+      '[role="dialog"]',
+      '[role="alertdialog"]',
+      '[aria-modal="true"]',
+      '[data-state="open"]',
+      '[class*="modal"]',
+      '[class*="popup"]',
+      '[class*="dialog"]',
+      '[class*="popover"]',
+      '[class*="permission"]',
+      '[class*="prompt"]'
+    ];
 
-    // 1. Check all [data-testid="run-command-step"]
-    const steps = document.querySelectorAll('[data-testid="run-command-step"]');
-    for (const s of steps) {
-      const btn = s.querySelector('div[role="button"], button');
-      if (btn) candidates.push({ btn, container: s });
-    }
+    for (const sel of popupSelectors) {
+      const containers = document.querySelectorAll(sel);
+      for (const container of containers) {
+        if (isInsideSidebar(container)) continue;
+        if (container.hasAttribute('data-antigravity-modal-handled')) continue;
 
-    // 2. Check all buttons in page
-    const allBtns = document.querySelectorAll('div[role="button"], button');
-    for (const b of allBtns) {
-      if (b === toggleBtn || (toggleBtn && toggleBtn.contains(b))) continue;
-      const t = (b.innerText || b.textContent || '').trim();
-      if (t.toLowerCase().startsWith('run\\n') || t.toLowerCase().startsWith('run ') || t.toLowerCase() === 'run') {
-        if (!candidates.some(c => c.btn === b)) {
-          candidates.push({ btn: b, container: b.parentElement });
+        // Auto-select 1st option if multiple choice (e.g. ask_question)
+        const options = container.querySelectorAll('input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"], [class*="option"]');
+        if (options.length > 0) {
+          const firstOpt = options[0];
+          if (!firstOpt.checked && firstOpt.getAttribute('aria-checked') !== 'true') {
+            clickElement(firstOpt);
+          }
+        }
+
+        // Click accept/proceed/submit/run button
+        const btns = container.querySelectorAll('button, [role="button"], [tabindex="0"], input[type="submit"]');
+        for (const btn of btns) {
+          if (isAcceptButton(btn)) {
+            const modalText = (container.innerText || container.textContent || '').trim();
+            const blockedReason = requiresManualReview(modalText);
+
+            if (blockedReason) {
+              console.warn('[Auto-Accept] ⚠️ Chatbox popup left for manual review (' + blockedReason + '):', modalText.slice(0, 80));
+              container.setAttribute('data-antigravity-modal-handled', 'blocked-' + blockedReason);
+              manualReviewCount++;
+              localStorage.setItem('antigravity_manual_review_count', manualReviewCount.toString());
+              break;
+            }
+
+            container.setAttribute('data-antigravity-modal-handled', 'accepted-' + Date.now());
+            btn.setAttribute('data-antigravity-processed', 'accepted-' + Date.now());
+            clickElement(btn);
+            acceptedCount++;
+            localStorage.setItem('antigravity_accepted_count', acceptedCount.toString());
+            if (toggleBtn) {
+              toggleBtn.innerHTML = '⚡ Auto-Accept: ON <span style="opacity:0.8; font-weight:normal; margin-left:3px">(' + acceptedCount + ')</span>';
+            }
+            console.log('[Auto-Accept] ✅ Auto-accepted chatbox popup modal:', modalText.slice(0, 80));
+            break;
+          }
         }
       }
     }
 
-    for (const { btn, container } of candidates) {
-      if (btn.hasAttribute('data-antigravity-processed')) continue;
+    // =========================================================================
+    // 2. TRACK TERMINAL RUN PROMPTS ([data-testid="run-command-step"])
+    // =========================================================================
+    const commandSteps = document.querySelectorAll('[data-testid="run-command-step"], [class*="command-step"], [class*="tool-step"]');
+    for (const step of commandSteps) {
+      const btn = step.querySelector('div[role="button"], button');
+      if (!btn || btn.hasAttribute('data-antigravity-processed')) continue;
 
       const text = (btn.innerText || btn.textContent || '').trim();
       const lines = text.split(/\\r?\\n/).map(l => l.trim()).filter(Boolean);
       const firstWord = (lines[0] || '').toLowerCase();
 
-      // Only process pending "Run" actions
       if (firstWord !== 'run' && !firstWord.startsWith('run')) continue;
 
-      // Extract the full command
       let commandText = lines.slice(1).join('\\n');
-      if (!commandText && container) {
-        const codeEl = container.querySelector('code, pre, [class*="command"], .font-mono');
+      if (!commandText) {
+        const codeEl = step.querySelector('code, pre, [class*="command"], .font-mono');
         if (codeEl) commandText = codeEl.textContent.trim();
-        else commandText = container.textContent.trim();
+        else commandText = step.textContent.trim();
       }
 
-      // Check if it requires manual review (sudo, rm, -rf, drop)
       const blockedReason = requiresManualReview(commandText);
       if (blockedReason) {
-        console.warn('[Auto-Accept] ⚠️ Left for manual review (' + blockedReason + '):', commandText.slice(0, 80));
+        console.warn('[Auto-Accept] ⚠️ Terminal command left for manual review (' + blockedReason + '):', commandText.slice(0, 80));
         btn.setAttribute('data-antigravity-processed', 'manual-review-' + blockedReason);
         manualReviewCount++;
         localStorage.setItem('antigravity_manual_review_count', manualReviewCount.toString());
         continue;
       }
 
-      // Auto-accept all other commands!
       btn.setAttribute('data-antigravity-processed', 'accepted-' + Date.now());
       clickElement(btn);
       acceptedCount++;
@@ -188,21 +295,49 @@ export const CORE_ENGINE_CODE = `
       if (toggleBtn) {
         toggleBtn.innerHTML = '⚡ Auto-Accept: ON <span style="opacity:0.8; font-weight:normal; margin-left:3px">(' + acceptedCount + ')</span>';
       }
-      console.log('[Auto-Accept] ✅ Auto-accepted command:', (commandText || text).slice(0, 80));
+      console.log('[Auto-Accept] ✅ Auto-accepted terminal command:', (commandText || text).slice(0, 80));
+    }
+
+    // =========================================================================
+    // 3. ANY REMAINING RUN / ACCEPT BUTTON ON SCREEN
+    // =========================================================================
+    const allButtons = document.querySelectorAll('div[role="button"], button');
+    for (const btn of allButtons) {
+      if (btn.hasAttribute('data-antigravity-processed')) continue;
+      if (isInsideSidebar(btn)) continue;
+      if (!isAcceptButton(btn)) continue;
+
+      const text = (btn.innerText || btn.textContent || '').trim();
+      const parentText = (btn.parentElement ? btn.parentElement.innerText : '') || text;
+      const blockedReason = requiresManualReview(parentText);
+
+      if (blockedReason) {
+        btn.setAttribute('data-antigravity-processed', 'manual-review-' + blockedReason);
+        continue;
+      }
+
+      btn.setAttribute('data-antigravity-processed', 'accepted-' + Date.now());
+      clickElement(btn);
+      acceptedCount++;
+      localStorage.setItem('antigravity_accepted_count', acceptedCount.toString());
+      if (toggleBtn) {
+        toggleBtn.innerHTML = '⚡ Auto-Accept: ON <span style="opacity:0.8; font-weight:normal; margin-left:3px">(' + acceptedCount + ')</span>';
+      }
+      console.log('[Auto-Accept] ✅ Auto-accepted action button:', text.slice(0, 60));
     }
   }
 
   function startEngine() {
     mountToggleButton();
-    scanAndExecute();
+    scanAndAutoAccept();
 
     const targetNode = document.body || document.documentElement;
     if (targetNode) {
-      const observer = new MutationObserver(() => scanAndExecute());
+      const observer = new MutationObserver(() => scanAndAutoAccept());
       observer.observe(targetNode, { childList: true, subtree: true, attributes: true });
     }
 
-    setInterval(scanAndExecute, 50);
+    setInterval(scanAndAutoAccept, 25);
   }
 
   if (document.readyState === 'loading') {
@@ -317,7 +452,9 @@ export async function patchDesktopApp(asarPath = null) {
     }
 
     const currentPreload = fs.readFileSync(preloadPath, 'utf8');
-    const cleanPreload = currentPreload.split('// =========================================================================\n// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE')[0].split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
+    const cleanPreload = currentPreload
+      .split('// =========================================================================\n// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE')[0]
+      .split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
 
     console.log(`[core-patcher] Injecting Native Auto-Accept Engine & UI into preload.js...`);
     const injectorWrapper = `
@@ -372,7 +509,9 @@ export async function patchIdeApp(agentJsPath = null) {
   }
 
   const currentJs = fs.readFileSync(targetJs, 'utf8');
-  const cleanJs = currentJs.split('// =========================================================================\n// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE')[0].split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
+  const cleanJs = currentJs
+    .split('// =========================================================================\n// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE')[0]
+    .split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
 
   console.log(`[core-patcher] Injecting Native Auto-Accept Engine & UI into jetskiAgent.js...`);
   const updatedJs = cleanJs + '\n\n' + CORE_ENGINE_CODE;
