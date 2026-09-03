@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Google Antigravity (Debug CDP)
+Comment=Google Antigravity with Remote Debugging Port Enabled
+GenericName=Text Editor
+Exec=/usr/bin/antigravity --remote-debugging-port=9333 %F
+Icon=antigravity
+Type=Application
+StartupNotify=true
+StartupWMClass=antigravity
+Categories=TextEditor;Development;IDE;
+MimeType=text/plain;inode/directory;
+Keywords=vscode;antigravity;development;

@@ -1,0 +1,30 @@
+{
+  "name": "antigravity-auto-accept",
+  "version": "1.0.0",
+  "description": "Cross-platform CDP automation tool to auto-accept permission prompts in Google Antigravity desktop & IDE with safety guardrails",
+  "main": "src/daemon.js",
+  "bin": {
+    "antigravity-auto-accept": "bin/antigravity-auto-accept.js"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node bin/antigravity-auto-accept.js run",
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "antigravity",
+    "cdp",
+    "automation",
+    "auto-accept",
+    "safety-guardrails",
+    "devtools-protocol"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
