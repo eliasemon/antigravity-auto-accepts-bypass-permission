@@ -3,55 +3,45 @@ import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
 
-const CORE_ENGINE_CODE = `
+export const CORE_ENGINE_CODE = `
 // =========================================================================
-// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE
-// Directly injected into Antigravity runtime
+// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE WITH UI TOGGLE
 // =========================================================================
 (function initAntigravityCoreAutoAccept() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (window.__antigravityCoreAutoAcceptActive) return;
   window.__antigravityCoreAutoAcceptActive = true;
 
-  console.log('[Antigravity Core Auto-Accept] ⚡ Native engine active in renderer');
+  console.log('[Antigravity Core] ⚡ Native Auto-Accept Engine & UI Initialized');
 
-  const CONFIG = {
-    acceptLabels: [
-      'accept', 'always allow', 'allow', 'run', 'run command',
-      'approve', 'execute', 'proceed', 'confirm', 'yes', 'keep', 'apply'
-    ],
-    rejectLabels: [
-      'reject', 'cancel', 'deny', 'skip', 'dismiss', 'no', "don't allow"
-    ],
-    // Safety guardrails: strictly block dangerous operations
-    blacklist: [
-      // 1. Recursive or forced rm
-      /\\b(?:rm\\s+[^\\n;|&]*(?:-[a-zA-Z0-9]*[rR][a-zA-Z0-9]*[fF]|-[a-zA-Z0-9]*[fF][a-zA-Z0-9]*[rR]|(?:--recursive\\s+[^\\n;|&]*--force|--force\\s+[^\\n;|&]*--recursive)|(?:-(?:[a-zA-Z0-9]*[rR][a-zA-Z0-9]*)\\s+[^\\n;|&]*-(?:[a-zA-Z0-9]*[fF][a-zA-Z0-9]*))|(?:-(?:[a-zA-Z0-9]*[fF][a-zA-Z0-9]*)\\s+[^\\n;|&]*-(?:[a-zA-Z0-9]*[rR][a-zA-Z0-9]*)))|rmdir\\s+.*[\\/\\\\][sq]|del\\s+.*[\\/\\\\][fqs]|Remove-Item\\s+.*(?:-Recurse\\s+.*-Force|-Force\\s+.*-Recurse))\\b/i,
-      // 2. sudo and superuser
-      /\\b(?:sudo|doas|runas|pkexec)\\b|(?:^|[;&|]\\s*)su(?:\\s+-[a-zA-Z0-9]*|\\s+[a-zA-Z0-9_]+)?\\b|Set-ExecutionPolicy\\s+(?:Unrestricted|Bypass)/i,
-      // 3. pipe to shell (curl | sh, curl | bash, wget)
-      /\\b(?:curl|wget|fetch|invoke-webrequest|iwr)\\b[^\\n|;&]*\\|[^\\n|;&]*(?:sudo\\s+)?(?:\\/(?:usr\\/)?(?:bin|local\\/bin)\\/)?(?:ba|z)?sh\\b/i,
-      /\\b(?:curl|wget|fetch|invoke-webrequest|iwr)\\b[^\\n|;&]*\\|[^\\n|;&]*(?:sudo\\s+)?(?:python[23]?|perl|pwsh|powershell)\\b/i,
-      // 4. git push --force / git push -f
-      /\\bgit\\s+(?:push\\s+[^\\n;&]*(?:--force(?:-with-lease|-if-includes)?\\b|-[a-zA-Z0-9]*f[a-zA-Z0-9]*\\b|\\+[a-zA-Z0-9_\\/.-]+)|reset\\s+--hard|clean\\s+-[a-zA-Z0-9]*f|branch\\s+-[dD]\\b)/i,
-      // 5. DROP TABLE / TRUNCATE
-      /\\b(?:DROP\\s+(?:DATABASE|SCHEMA|TABLE|VIEW|PROCEDURE)|TRUNCATE\\s+(?:TABLE\\s+)?)\\b/i,
-      // 6. Sensitive credentials & keys (.env, id_rsa, id_ed25519, keys)
-      /(?:\\.env(?!\\.(?:example|sample|template|dist)\\b)(?:\\.[a-zA-Z0-9_-]+)?\\b|\\bid_rsa\\b|\\bid_ed25519\\b|\\bid_ecdsa\\b|\\bid_dsa\\b|\\bauthorized_keys\\b|\\.pem\\b|\\.pfx\\b|\\.pkcs12\\b|aws_access_key_id|AWS_SECRET_ACCESS_KEY|credentials\\.json|service[_-]account.*\\.json|\\b(?:private|server|client|id_rsa)[._-]key\\b|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----)/i,
-      // 7. System root paths and sensitive shell files
-      /(?:(?:^|[\\s"'>=])\\/(?:etc|boot|sys|proc|root|System)\\/|[a-zA-Z]:\\\\Windows\\\\|~\\/(?:\\.bashrc|\\.zshrc|\\.profile|\\.bash_profile))/i,
-      // 8. Directory traversal escaping workspace root
-      /(?:\\.\\.[\\/\\\\])+/i,
-    ]
-  };
+  // State: persistent in localStorage, defaults to ON
+  let isEnabled = localStorage.getItem('antigravity_auto_accept_enabled') !== 'false';
+  let acceptedCount = parseInt(localStorage.getItem('antigravity_accepted_count') || '0', 10);
+  let blockedCount = parseInt(localStorage.getItem('antigravity_blocked_count') || '0', 10);
 
-  function isDangerous(text) {
+  // STRICT MANUAL REVIEW BLACKLIST (ONLY: rm -rf, sudo, database drop table)
+  const STRICT_BLACKLIST = [
+    // 1. rm -rf and recursive forced file deletions
+    /\\b(?:rm\\s+[^\\n;|&]*(?:-[a-zA-Z0-9]*[rR][a-zA-Z0-9]*[fF]|-[a-zA-Z0-9]*[fF][a-zA-Z0-9]*[rR]|(?:--recursive\\s+[^\\n;|&]*--force|--force\\s+[^\\n;|&]*--recursive)|(?:-(?:[a-zA-Z0-9]*[rR][a-zA-Z0-9]*)\\s+[^\\n;|&]*-(?:[a-zA-Z0-9]*[fF][a-zA-Z0-9]*))|(?:-(?:[a-zA-Z0-9]*[fF][a-zA-Z0-9]*)\\s+[^\\n;|&]*-(?:[a-zA-Z0-9]*[rR][a-zA-Z0-9]*)))|rmdir\\s+.*[\\/\\\\][sq]|del\\s+.*[\\/\\\\][fqs]|Remove-Item\\s+.*(?:-Recurse\\s+.*-Force|-Force\\s+.*-Recurse))\\b/i,
+    // 2. sudo and superuser privilege escalation
+    /\\b(?:sudo|doas|runas|pkexec)\\b|(?:^|[;&|]\\s*)su(?:\\s+-[a-zA-Z0-9]*|\\s+[a-zA-Z0-9_]+)?\\b/i,
+    // 3. Database DROP TABLE / TRUNCATE / DROP DATABASE
+    /\\b(?:DROP\\s+(?:DATABASE|SCHEMA|TABLE|VIEW|PROCEDURE)|TRUNCATE\\s+(?:TABLE\\s+)?)\\b/i,
+  ];
+
+  function isStrictlyDangerous(text) {
     if (!text || typeof text !== 'string') return false;
-    for (const re of CONFIG.blacklist) {
+    for (const re of STRICT_BLACKLIST) {
       if (re.test(text)) return true;
     }
     return false;
   }
+
+  const ACCEPT_LABELS = [
+    'run', 'run command', 'accept', 'always allow', 'allow',
+    'approve', 'execute', 'proceed', 'confirm', 'yes', 'keep', 'apply'
+  ];
+  const REJECT_LABELS = ['reject', 'cancel', 'deny', 'skip', 'dismiss', 'no', "don't allow"];
 
   function isInsideSidebar(el) {
     if (!el) return false;
@@ -64,14 +54,83 @@ const CORE_ENGINE_CODE = `
     return Boolean(el.closest(excluded.join(', ')));
   }
 
+  // --- UI TOGGLE BUTTON ---
+  let toggleBtn = null;
+
+  function mountToggleButton() {
+    if (document.getElementById('antigravity-auto-accept-toggle-btn')) return;
+    if (!document.body) return;
+
+    toggleBtn = document.createElement('button');
+    toggleBtn.id = 'antigravity-auto-accept-toggle-btn';
+    toggleBtn.style.cssText = \`
+      position: fixed;
+      top: 10px;
+      right: 80px;
+      z-index: 2147483647;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 9999px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      user-select: none;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    \`;
+
+    function updateButtonUI() {
+      if (!toggleBtn) return;
+      if (isEnabled) {
+        toggleBtn.innerHTML = '⚡ <span>Auto-Accept: ON</span> <span style="opacity:0.75; font-size:10px; margin-left:2px">(' + acceptedCount + ')</span>';
+        toggleBtn.style.background = '#052e16';
+        toggleBtn.style.color = '#4ade80';
+        toggleBtn.style.borderColor = '#16a34a';
+        toggleBtn.style.boxShadow = '0 0 12px rgba(74, 222, 128, 0.25), 0 2px 6px rgba(0,0,0,0.3)';
+        toggleBtn.title = 'Antigravity Auto-Accept is ACTIVE (Click to Pause)\\nAccepted: ' + acceptedCount + ' | Blocked for Review: ' + blockedCount;
+      } else {
+        toggleBtn.innerHTML = '⏸️ <span>Auto-Accept: OFF</span>';
+        toggleBtn.style.background = '#27272a';
+        toggleBtn.style.color = '#a1a1aa';
+        toggleBtn.style.borderColor = '#3f3f46';
+        toggleBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+        toggleBtn.title = 'Antigravity Auto-Accept is PAUSED (Click to Enable)\\nAccepted: ' + acceptedCount + ' | Blocked for Review: ' + blockedCount;
+      }
+    }
+
+    toggleBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      isEnabled = !isEnabled;
+      localStorage.setItem('antigravity_auto_accept_enabled', isEnabled.toString());
+      updateButtonUI();
+      console.log('[Antigravity UI] Auto-Accept toggled:', isEnabled ? 'ON' : 'OFF');
+      if (isEnabled) {
+        scanAndAccept();
+      }
+    });
+
+    updateButtonUI();
+    document.body.appendChild(toggleBtn);
+  }
+
+  // --- SCAN & ACCEPT ROUTINE ---
   function scanAndAccept() {
+    mountToggleButton();
+    if (!isEnabled) return;
+
     try {
       const elements = document.querySelectorAll('button, [role="button"], [tabindex="0"], a.button, input[type="button"], input[type="submit"]');
 
       for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
+        if (el === toggleBtn || (toggleBtn && toggleBtn.contains(el))) continue;
         if (isInsideSidebar(el)) continue;
-        if (el.hasAttribute('data-antigravity-core-auto-accepted')) continue;
+        if (el.hasAttribute('data-antigravity-auto-accepted')) continue;
         if (el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
 
         const style = window.getComputedStyle(el);
@@ -85,13 +144,13 @@ const CORE_ENGINE_CODE = `
         const lines = rawText.split(/\\r?\\n/).map(s => s.trim()).filter(Boolean);
         const firstLine = (lines[0] || '').toLowerCase();
 
-        // Check reject buttons
-        if (CONFIG.rejectLabels.some(rej => firstLine === rej || firstLine.startsWith(rej + ' '))) {
+        // Skip explicit rejects
+        if (REJECT_LABELS.some(rej => firstLine === rej || firstLine.startsWith(rej + ' '))) {
           continue;
         }
 
         let isAccept = false;
-        for (const acc of CONFIG.acceptLabels) {
+        for (const acc of ACCEPT_LABELS) {
           if (
             firstLine === acc ||
             firstLine.startsWith(acc + ' ') ||
@@ -108,7 +167,7 @@ const CORE_ENGINE_CODE = `
           const childSpans = el.querySelectorAll('span, b, strong, div');
           for (const sp of childSpans) {
             const spText = (sp.innerText || sp.textContent || '').trim().toLowerCase();
-            if (CONFIG.acceptLabels.includes(spText)) {
+            if (ACCEPT_LABELS.includes(spText)) {
               isAccept = true;
               break;
             }
@@ -134,15 +193,20 @@ const CORE_ENGINE_CODE = `
 
         const fullText = [cmdText, contextText, rawText].filter(Boolean).join('\\n');
 
-        // Safety check!
-        if (isDangerous(fullText)) {
-          console.warn('[Antigravity Core Auto-Accept] ⚠️ Destructive command blocked for manual review:', fullText.slice(0, 80));
-          el.setAttribute('data-antigravity-core-auto-accepted', 'blocked-safety');
+        // STRICT MANUAL REVIEW: ONLY rm -rf, sudo, database drop table
+        if (isStrictlyDangerous(fullText)) {
+          console.warn('[Auto-Accept] ⚠️ Dangerous command requires manual review:', fullText.slice(0, 80));
+          el.setAttribute('data-antigravity-auto-accepted', 'blocked-manual-review');
+          blockedCount++;
+          localStorage.setItem('antigravity_blocked_count', blockedCount.toString());
+          if (toggleBtn) {
+            toggleBtn.title = 'Antigravity Auto-Accept is ACTIVE\\nAccepted: ' + acceptedCount + ' | Blocked for Review: ' + blockedCount;
+          }
           continue;
         }
 
-        // Safe! Execute instant native click
-        el.setAttribute('data-antigravity-core-auto-accepted', Date.now().toString());
+        // All other terminal commands and prompts: AUTO-ACCEPT INSTANTLY!
+        el.setAttribute('data-antigravity-auto-accepted', Date.now().toString());
 
         const cx = rect.x + rect.width / 2;
         const cy = rect.y + rect.height / 2;
@@ -161,14 +225,21 @@ const CORE_ENGINE_CODE = `
           el.click();
         }
 
-        console.log('[Antigravity Core Auto-Accept] ✅ Auto-accepted prompt:', firstLine, (cmdText || contextText).slice(0, 80));
+        acceptedCount++;
+        localStorage.setItem('antigravity_accepted_count', acceptedCount.toString());
+        if (toggleBtn) {
+          toggleBtn.innerHTML = '⚡ <span>Auto-Accept: ON</span> <span style="opacity:0.75; font-size:10px; margin-left:2px">(' + acceptedCount + ')</span>';
+          toggleBtn.title = 'Antigravity Auto-Accept is ACTIVE\\nAccepted: ' + acceptedCount + ' | Blocked for Review: ' + blockedCount;
+        }
+        console.log('[Auto-Accept] ✅ Auto-accepted command prompt:', (cmdText || rawText).slice(0, 80));
       }
     } catch (err) {
-      console.error('[Antigravity Core Auto-Accept] Scan error:', err);
+      console.error('[Auto-Accept] Scan error:', err);
     }
   }
 
-  function startObserver() {
+  function startEngine() {
+    mountToggleButton();
     scanAndAccept();
 
     const targetNode = document.body || document.documentElement;
@@ -184,9 +255,9 @@ const CORE_ENGINE_CODE = `
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startObserver);
+    document.addEventListener('DOMContentLoaded', startEngine);
   } else {
-    startObserver();
+    startEngine();
   }
 })();
 // =========================================================================
@@ -286,28 +357,43 @@ export async function patchDesktopApp(asarPath = null) {
 
   const tmpExtractDir = path.join(os.tmpdir(), `antigravity-core-patch-${Date.now()}`);
   try {
-    // 1. Extract asar
     console.log(`[core-patcher] Extracting asar archive...`);
     execSync(`npx @electron/asar extract "${targetAsar}" "${tmpExtractDir}"`, { stdio: 'inherit' });
 
-    // 2. Patch preload.js
     const preloadPath = path.join(tmpExtractDir, 'dist', 'preload.js');
     if (!fs.existsSync(preloadPath)) {
       throw new Error(`preload.js not found in extracted asar at ${preloadPath}`);
     }
 
     const currentPreload = fs.readFileSync(preloadPath, 'utf8');
-    if (currentPreload.includes('ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')) {
-      console.log(`[core-patcher] Desktop app is already patched.`);
-    } else {
-      console.log(`[core-patcher] Injecting Native Auto-Accept Engine into preload.js...`);
-      const updatedPreload = currentPreload + '\n\n' + CORE_ENGINE_CODE;
-      fs.writeFileSync(preloadPath, updatedPreload, 'utf8');
-    }
+    const cleanPreload = currentPreload.split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
 
-    // 3. Repack asar
+    console.log(`[core-patcher] Injecting Native Auto-Accept Engine & UI into preload.js...`);
+    // Inject both direct DOM runner and script injector into main world
+    const injectorWrapper = `
+// Inject into Main World
+try {
+  const inlineScript = document.createElement('script');
+  inlineScript.id = 'antigravity-core-auto-accept-injected';
+  inlineScript.textContent = \`\${${JSON.stringify(CORE_ENGINE_CODE)}}\`;
+  if (document.documentElement) {
+    document.documentElement.appendChild(inlineScript);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.documentElement.appendChild(inlineScript);
+    });
+  }
+} catch (e) {}
+
+// Run in Preload World
+${CORE_ENGINE_CODE}
+`;
+
+    const updatedPreload = cleanPreload + '\n\n' + injectorWrapper;
+    fs.writeFileSync(preloadPath, updatedPreload, 'utf8');
+
     console.log(`[core-patcher] Repacking patched app.asar...`);
-    execSync(`npx @electron/asar pack "${tmpExtractDir}" "${targetAsar}"`, { stdio: 'inherit' });
+    execSync(`npx @electron/asar pack "${tmpExtractDir}" "${targetAsar}" --unpack-dir "{node_modules}"`, { stdio: 'inherit' });
 
     console.log(`[core-patcher] ✅ Antigravity Desktop core patched successfully!`);
     return { success: true, target: targetAsar };
@@ -336,13 +422,10 @@ export async function patchIdeApp(agentJsPath = null) {
   }
 
   const currentJs = fs.readFileSync(targetJs, 'utf8');
-  if (currentJs.includes('ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')) {
-    console.log(`[core-patcher] IDE app is already patched.`);
-    return { success: true, target: targetJs, alreadyPatched: true };
-  }
+  const cleanJs = currentJs.split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
 
-  console.log(`[core-patcher] Injecting Native Auto-Accept Engine into jetskiAgent.js...`);
-  const updatedJs = currentJs + '\n\n' + CORE_ENGINE_CODE;
+  console.log(`[core-patcher] Injecting Native Auto-Accept Engine & UI into jetskiAgent.js...`);
+  const updatedJs = cleanJs + '\n\n' + CORE_ENGINE_CODE;
   fs.writeFileSync(targetJs, updatedJs, 'utf8');
 
   console.log(`[core-patcher] ✅ Antigravity IDE core patched successfully!`);
