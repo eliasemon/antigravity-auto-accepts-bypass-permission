@@ -53,16 +53,23 @@ export class AntigravityAutoAcceptDaemon {
       this.pruneCooldownCache();
 
       // 1. Ensure CDP is connected to an active target
-      if (!this.cdp.connected) {
-        try {
-          const targets = await this.cdp.fetchTargets();
-          const candidates = this.cdp.findCandidateTargets(targets);
-          if (candidates.length === 0) {
-            return;
-          }
+      let targets = [];
+      try {
+        targets = await this.cdp.fetchTargets();
+      } catch (err) {
+        return;
+      }
 
-          await this.cdp.connectToTarget(candidates[0]);
-          console.log(`[cdp] Connected to target: "${candidates[0].title}" (${candidates[0].url})`);
+      const candidateTargets = this.cdp.findCandidateTargets(targets);
+      if (candidateTargets.length === 0) {
+        return;
+      }
+
+      // If not connected or current target is no longer in targets list, connect
+      if (!this.cdp.connected || !targets.some((t) => t.id === this.cdp.currentTarget?.id)) {
+        try {
+          await this.cdp.connectToTarget(candidateTargets[0]);
+          console.log(`[cdp] Connected to target: "${candidateTargets[0].title}" (${candidateTargets[0].url})`);
         } catch (err) {
           return;
         }
@@ -79,6 +86,17 @@ export class AntigravityAutoAcceptDaemon {
       } catch (err) {
         this.cdp.disconnect();
         return;
+      }
+
+      // If no candidates on current target and multiple targets exist, try next candidate target
+      if ((!result || !result.candidates || result.candidates.length === 0) && candidateTargets.length > 1) {
+        const nextTarget = candidateTargets.find((t) => t.id !== this.cdp.currentTarget?.id);
+        if (nextTarget) {
+          try {
+            await this.cdp.connectToTarget(nextTarget);
+            result = await this.cdp.evaluate(detectorScript);
+          } catch (e) {}
+        }
       }
 
       if (!result || !Array.isArray(result.candidates) || result.candidates.length === 0) {
@@ -103,8 +121,14 @@ export class AntigravityAutoAcceptDaemon {
           continue;
         }
 
-        // Check Safety Engine
-        const safetyResult = this.safety.evaluate(candidate.contextText);
+        // Check Safety Engine across surrounding context, button command payload, and button text
+        const textToEvaluate = [
+          candidate.contextText,
+          candidate.commandText,
+          candidate.buttonText,
+        ].filter(Boolean).join('\n');
+
+        const safetyResult = this.safety.evaluate(textToEvaluate);
 
         if (!safetyResult.safe) {
           // Unsafe / destructive command detected!
@@ -121,7 +145,7 @@ export class AntigravityAutoAcceptDaemon {
           console.warn(`\n[SAFETY ALERT] ⚠️  Blocked potentially dangerous action!`);
           console.warn(`Reason: ${safetyResult.reason}`);
           console.warn(`Context Snippet: "${safetyResult.matchSnippet}"`);
-          console.warn(`Action "${candidate.buttonText}" requires manual user review.`);
+          console.warn(`Action "${candidate.buttonText.split('\n')[0]}" requires manual user review.`);
 
           if (this.config.safety?.notifyOnBlock) {
             sendNotification({
@@ -135,28 +159,30 @@ export class AntigravityAutoAcceptDaemon {
 
         // Safe to auto-accept!
         try {
+          // 1. In-page pointer and mouse events
           const clickScript = getInPageClickScript(candidate.index, now);
-          const clickRes = await this.cdp.evaluate(clickScript);
+          await this.cdp.evaluate(clickScript);
 
-          if (clickRes && clickRes.success) {
-            this.cooldownCache.set(hash, now);
-            this.stats.acceptedCount++;
-            const preview = (candidate.contextText || 'No context').slice(0, 80).replace(/\n/g, ' ');
-            this.stats.lastAction = {
-              type: 'accepted',
-              time: new Date().toISOString(),
-              button: candidate.buttonText,
-              preview,
-            };
-
-            console.log(`[AUTO-ACCEPT] ✅ Clicked "${candidate.buttonText}" | Context: ${preview}`);
-          } else if (candidate.rect && candidate.rect.x > 0 && candidate.rect.y > 0) {
-            // Fallback to CDP synthetic mouse dispatch
+          // 2. Hardware native click via Chromium compositor
+          if (candidate.rect && candidate.rect.x > 0 && candidate.rect.y > 0) {
             await this.cdp.dispatchClick(candidate.rect.x, candidate.rect.y);
-            this.cooldownCache.set(hash, now);
-            this.stats.acceptedCount++;
-            console.log(`[AUTO-ACCEPT] ✅ Dispatched CDP click on "${candidate.buttonText}"`);
           }
+
+          this.cooldownCache.set(hash, now);
+          this.stats.acceptedCount++;
+
+          const preview = (candidate.commandText || candidate.contextText || 'No context')
+            .slice(0, 80)
+            .replace(/\n/g, ' ');
+
+          this.stats.lastAction = {
+            type: 'accepted',
+            time: new Date().toISOString(),
+            button: candidate.buttonText.split('\n')[0],
+            preview,
+          };
+
+          console.log(`[AUTO-ACCEPT] ✅ Accepted: "${candidate.buttonText.split('\n')[0]}" | Command: ${preview}`);
         } catch (err) {
           console.error(`[click] Error dispatching click: ${err.message}`);
         }

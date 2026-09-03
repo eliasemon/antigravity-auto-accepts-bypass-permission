@@ -253,21 +253,36 @@ export class CDPClient extends EventEmitter {
   }
 
   /**
-   * Dispatches synthetic mouse click at coordinates (x, y).
+   * Dispatches synthetic native mouse click at coordinates (x, y) via Chromium compositor.
    */
   async dispatchClick(x, y) {
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+
+    // 1. Move to trigger hover state
+    await this.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: rx,
+      y: ry,
+    });
+
+    // 2. Mouse press
     await this.send('Input.dispatchMouseEvent', {
       type: 'mousePressed',
-      x,
-      y,
+      x: rx,
+      y: ry,
       button: 'left',
       clickCount: 1,
     });
 
+    // 3. Realistic hardware delay (40ms)
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    // 4. Mouse release
     await this.send('Input.dispatchMouseEvent', {
       type: 'mouseReleased',
-      x,
-      y,
+      x: rx,
+      y: ry,
       button: 'left',
       clickCount: 1,
     });

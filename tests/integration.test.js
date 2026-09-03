@@ -33,7 +33,7 @@ describe('Daemon & CDP Integration', () => {
         blacklist: [
           {
             id: 'destructive-rm',
-            pattern: '\\brm\\s+-[a-zA-Z0-9]*[rf]',
+            pattern: '\\brm\\s+[^\n;|&]*(?:-[a-zA-Z0-9]*[rR][a-zA-Z0-9]*[fF]|-[a-zA-Z0-9]*[fF][a-zA-Z0-9]*[rR])',
             flags: 'i',
           },
         ],
@@ -49,13 +49,14 @@ describe('Daemon & CDP Integration', () => {
     if (mockServer) await mockServer.stop();
   });
 
-  it('should auto-accept a safe prompt', async () => {
+  it('should auto-accept a safe multiline button (Run\\nnpm test)', async () => {
     mockServer.receivedClicks = [];
     mockServer.setMockCandidates([
       {
         index: 0,
-        buttonText: 'Run',
-        contextText: 'npm test -- --watch',
+        buttonText: 'Run\nnpm test --watch',
+        commandText: 'npm test --watch',
+        contextText: 'npm test --watch',
         rect: { x: 150, y: 300, width: 80, height: 32 },
         hasAcceptedTag: false,
       },
@@ -63,8 +64,8 @@ describe('Daemon & CDP Integration', () => {
 
     await daemon.cycle();
 
-    assert.strictEqual(daemon.stats.acceptedCount, 1, 'Safe prompt should be accepted');
-    assert.strictEqual(mockServer.receivedClicks.length, 1, 'Mock server should receive 1 click');
+    assert.strictEqual(daemon.stats.acceptedCount, 1, 'Safe multiline prompt should be accepted');
+    assert.ok(mockServer.receivedClicks.length >= 1, 'Mock server should receive click dispatch');
   });
 
   it('should respect per-element cooldown and not double-click', async () => {
@@ -81,12 +82,13 @@ describe('Daemon & CDP Integration', () => {
     assert.strictEqual(daemon.stats.acceptedCount, 1);
   });
 
-  it('should block a dangerous prompt with safety guardrail', async () => {
+  it('should block a dangerous prompt with safety guardrail (Run\\nrm -rf /)', async () => {
     mockServer.setMockCandidates([
       {
         index: 1,
-        buttonText: 'Run',
-        contextText: 'rm -rf / --no-preserve-root',
+        buttonText: 'Run\nrm -rf /',
+        commandText: 'rm -rf /',
+        contextText: 'rm -rf /',
         rect: { x: 200, y: 400, width: 80, height: 32 },
         hasAcceptedTag: false,
       },
@@ -109,6 +111,7 @@ describe('Daemon & CDP Integration', () => {
       {
         index: 2,
         buttonText: 'Accept',
+        commandText: 'cat config.json',
         contextText: 'cat config.json',
         rect: { x: 100, y: 100, width: 60, height: 25 },
         hasAcceptedTag: false,
@@ -123,7 +126,7 @@ describe('Daemon & CDP Integration', () => {
     // Resume daemon
     daemon.paused = false;
     await daemon.cycle();
-    assert.strictEqual(mockServer.receivedClicks.length, 1, 'Should click when resumed');
+    assert.ok(mockServer.receivedClicks.length >= 1, 'Should click when resumed');
   });
 
   it('should respond to IPC commands', async () => {

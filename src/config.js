@@ -42,62 +42,60 @@ export const DEFAULT_CONFIG = {
   safety: {
     enabled: true,
     notifyOnBlock: true,
+    workspacePath: process.cwd(),
     blacklist: [
       {
         id: 'destructive-rm',
-        description: 'Recursive or forced file deletion (rm -rf / rmdir / del)',
-        pattern: '\\b(?:rm\\s+-[a-zA-Z0-9]*[rf][a-zA-Z0-9]*|rmdir\\s+/[sq]|del\\s+/[fqs])\\b',
+        description: 'Recursive or forced file deletion (rm -rf, rm -r -f, rm -fr, rmdir /s, del /f /s)',
+        pattern: '\\b(?:rm\\s+[^\n;|&]*(?:-[a-zA-Z0-9]*[rR][a-zA-Z0-9]*[fF]|-[a-zA-Z0-9]*[fF][a-zA-Z0-9]*[rR]|(?:--recursive\\s+[^\n;|&]*--force|--force\\s+[^\n;|&]*--recursive)|(?:-(?:[a-zA-Z0-9]*[rR][a-zA-Z0-9]*)\\s+[^\n;|&]*-(?:[a-zA-Z0-9]*[fF][a-zA-Z0-9]*))|(?:-(?:[a-zA-Z0-9]*[fF][a-zA-Z0-9]*)\\s+[^\n;|&]*-(?:[a-zA-Z0-9]*[rR][a-zA-Z0-9]*)))|rmdir\\s+.*[\\/\\\\][sq]|del\\s+.*[\\/\\\\][fqs]|Remove-Item\\s+.*(?:-Recurse\\s+.*-Force|-Force\\s+.*-Recurse))\\b',
         flags: 'i',
       },
       {
         id: 'privilege-escalation',
-        description: 'Superuser / privilege escalation commands (sudo, doas, runas, pkexec)',
-        pattern: '\\b(?:sudo|doas|runas|pkexec|su\\s+-?)\\b|Set-ExecutionPolicy\\s+(?:Unrestricted|Bypass)',
+        description: 'Superuser / privilege escalation commands (sudo, doas, runas, pkexec, su -)',
+        pattern: '\\b(?:sudo|doas|runas|pkexec)\\b|(?:^|[;&|]\\s*)su(?:\\s+-[a-zA-Z0-9]*|\\s+[a-zA-Z0-9_]+)?\\b|Set-ExecutionPolicy\\s+(?:Unrestricted|Bypass)',
         flags: 'i',
       },
       {
         id: 'pipe-to-shell',
-        description: 'Downloading and piping untrusted code directly to a shell',
-        pattern: '(?:curl|wget|fetch|invoke-webrequest|iwr)\\b.*\\|\\s*(?:bash|sh|zsh|python[23]?|perl|pwsh|powershell)',
+        description: 'Downloading and piping untrusted code directly to a shell (curl | sh, curl | bash, wget)',
+        pattern: '\\b(?:curl|wget|fetch|invoke-webrequest|iwr)\\b[^\n|;&]*\\|[^\n|;&]*(?:sudo\\s+)?(?:/(?:usr/)?(?:bin|local/bin)/)?(?:ba|z)?sh\\b|\\b(?:curl|wget|fetch|invoke-webrequest|iwr)\\b[^\n|;&]*\\|[^\n|;&]*(?:sudo\\s+)?(?:python[23]?|perl|pwsh|powershell)\\b',
         flags: 'i',
       },
       {
         id: 'git-force-push-reset',
-        description: 'Destructive git operations (git push --force, reset --hard, clean -f)',
-        pattern: '\\bgit\\s+(?:push\\s+[^;\\n]*(?:--force|-f\\b)|reset\\s+--hard|clean\\s+-[a-zA-Z0-9]*f|branch\\s+-(?:D|D\\b))',
+        description: 'Destructive git operations (git push --force, git push -f, reset --hard, clean -f)',
+        pattern: '\\bgit\\s+(?:push\\s+[^\n;&]*(?:--force(?:-with-lease|-if-includes)?\\b|-[a-zA-Z0-9]*f[a-zA-Z0-9]*\\b|\\+[a-zA-Z0-9_/.-]+)|reset\\s+--hard|clean\\s+-[a-zA-Z0-9]*f|branch\\s+-[dD]\\b)',
         flags: 'i',
       },
       {
         id: 'sql-drop-truncate',
-        description: 'Destructive SQL database/table manipulation (DROP, TRUNCATE)',
+        description: 'Destructive SQL database/table manipulation (DROP TABLE, TRUNCATE TABLE, DROP DATABASE)',
         pattern: '\\b(?:DROP\\s+(?:DATABASE|SCHEMA|TABLE|VIEW|PROCEDURE)|TRUNCATE\\s+(?:TABLE\\s+)?)\\b',
         flags: 'i',
       },
       {
         id: 'sensitive-credentials-and-keys',
         description: 'Access or modification of sensitive environment files, SSH keys, or cloud credentials',
-        pattern: '(?:\\.env(?:\\.[a-zA-Z0-9_-]+)?|\\bid_rsa|\\bid_ed25519|\\bauthorized_keys|\\.pem|\\.key|\\.pfx|aws_access_key_id|AWS_SECRET_ACCESS_KEY|credentials\\.json|service[_-]account.*\\.json)',
+        pattern: '(?:\\.env(?!\\.(?:example|sample|template|dist)\\b)(?:\\.[a-zA-Z0-9_-]+)?\\b|\\bid_rsa\\b|\\bid_ed25519\\b|\\bid_ecdsa\\b|\\bid_dsa\\b|\\bauthorized_keys\\b|\\.pem\\b|\\.pfx\\b|\\.pkcs12\\b|aws_access_key_id|AWS_SECRET_ACCESS_KEY|credentials\\.json|service[_-]account.*\\.json|\\b(?:private|server|client|id_rsa)[._-]key\\b|-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----)',
         flags: 'i',
       },
       {
         id: 'disk-and-firmware-destruction',
         description: 'Direct raw disk manipulation, format, or fork bombs',
-        pattern: '(?:\\bdd\\s+if=|\\bmkfs(?:\\.\\w+)?\\b|format\\s+[a-z]:|>\\s*/dev/sd[a-z]|>\\s*/dev/nvme|:\\(\\)\\s*\\{\\s*:\\|:&\\s*\\};:)',
+        pattern: '(?:\\bdd\\s+if=|\\bmkfs(?:\\.\\w+)?\\b|(?:^|[;&|]\\s*)format\\s+[a-z]:|>\\s*/dev/sd[a-z]|>\\s*/dev/nvme|:\\(\\)\\s*\\{\\s*:\\|:&\\s*\\};:)',
         flags: 'i',
       },
       {
         id: 'system-root-alteration',
         description: 'Modifying sensitive operating system directories or user shell profiles',
-        pattern: '(?:/etc/|/boot/|/sys/|/proc/|C:\\\\Windows\\\\|~/(?:\\.bashrc|\\.zshrc|\\.profile|\\.bash_profile))',
+        pattern: '(?:(?:^|[\\s"\'`>=])/(?:etc|boot|sys|proc|root|System)/|[a-zA-Z]:\\\\Windows\\\\|~/(?:\\.bashrc|\\.zshrc|\\.profile|\\.bash_profile))',
         flags: 'i',
       },
     ],
   },
 };
 
-/**
- * Returns default config directory per OS.
- */
 export function getDefaultConfigDir() {
   if (process.platform === 'win32') {
     return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'antigravity-auto-accept');
@@ -105,9 +103,6 @@ export function getDefaultConfigDir() {
   return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'antigravity-auto-accept');
 }
 
-/**
- * Returns full path to config.json.
- */
 export function getConfigPath(customPath = null) {
   if (customPath) return path.resolve(customPath);
   if (process.env.ANTIGRAVITY_AUTO_ACCEPT_CONFIG) {
@@ -116,9 +111,6 @@ export function getConfigPath(customPath = null) {
   return path.join(getDefaultConfigDir(), 'config.json');
 }
 
-/**
- * Deep merge utility for config objects.
- */
 function deepMerge(target, source) {
   const output = { ...target };
   if (!source || typeof source !== 'object') return output;
@@ -139,9 +131,6 @@ function deepMerge(target, source) {
   return output;
 }
 
-/**
- * Loads config, merging existing file with defaults.
- */
 export function loadConfig(customPath = null) {
   const configPath = getConfigPath(customPath);
   if (fs.existsSync(configPath)) {
@@ -157,9 +146,6 @@ export function loadConfig(customPath = null) {
   return { ...DEFAULT_CONFIG };
 }
 
-/**
- * Saves configuration to file.
- */
 export function saveConfig(config, customPath = null) {
   const configPath = getConfigPath(customPath);
   const dir = path.dirname(configPath);

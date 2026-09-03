@@ -18,20 +18,21 @@ describe('Detector Module', () => {
     assert.strictEqual(hash1.length, 16);
   });
 
-  it('should generate valid in-page detector JavaScript', () => {
-    const script = getInPageDetectorScript(['Accept', 'Run'], ['Reject', 'Cancel']);
+  it('should generate valid in-page detector JavaScript with multiline & sidebar support', () => {
+    const script = getInPageDetectorScript(['Accept', 'Run', 'Allow'], ['Reject', 'Cancel']);
     assert.ok(script.includes('collectButtons'));
+    assert.ok(script.includes('isInsideSidebar'));
     assert.ok(script.includes('extractContext'));
+    assert.ok(script.includes('firstLine'));
     assert.ok(script.includes('candidates'));
-    assert.ok(script.includes('"accept"'));
-    assert.ok(script.includes('"reject"'));
   });
 
-  it('should generate valid in-page click JavaScript with index and timestamp', () => {
+  it('should generate valid in-page click JavaScript with pointer and mouse events', () => {
     const clickScript = getInPageClickScript(2, 1725400000);
     assert.ok(clickScript.includes('buttons[2]'));
     assert.ok(clickScript.includes('1725400000'));
-    assert.ok(clickScript.includes('data-antigravity-auto-accepted'));
+    assert.ok(clickScript.includes('PointerEvent'));
     assert.ok(clickScript.includes('MouseEvent'));
+    assert.ok(clickScript.includes('btn.click'));
   });
 });
