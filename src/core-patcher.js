@@ -5,7 +5,7 @@ import { execSync } from 'child_process';
 
 export const CORE_ENGINE_CODE = `
 // =========================================================================
-// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE WITH UI TOGGLE
+// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE WITH IN-APP TOGGLE BUTTON
 // =========================================================================
 (function initAntigravityCoreAutoAccept() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -17,41 +17,23 @@ export const CORE_ENGINE_CODE = `
   // State: persistent in localStorage, defaults to ON
   let isEnabled = localStorage.getItem('antigravity_auto_accept_enabled') !== 'false';
   let acceptedCount = parseInt(localStorage.getItem('antigravity_accepted_count') || '0', 10);
-  let blockedCount = parseInt(localStorage.getItem('antigravity_blocked_count') || '0', 10);
+  let manualReviewCount = parseInt(localStorage.getItem('antigravity_manual_review_count') || '0', 10);
 
-  // STRICT MANUAL REVIEW BLACKLIST (ONLY: rm -rf, sudo, database drop table)
-  const STRICT_BLACKLIST = [
-    // 1. rm -rf and recursive forced file deletions
-    /\\b(?:rm\\s+[^\\n;|&]*(?:-[a-zA-Z0-9]*[rR][a-zA-Z0-9]*[fF]|-[a-zA-Z0-9]*[fF][a-zA-Z0-9]*[rR]|(?:--recursive\\s+[^\\n;|&]*--force|--force\\s+[^\\n;|&]*--recursive)|(?:-(?:[a-zA-Z0-9]*[rR][a-zA-Z0-9]*)\\s+[^\\n;|&]*-(?:[a-zA-Z0-9]*[fF][a-zA-Z0-9]*))|(?:-(?:[a-zA-Z0-9]*[fF][a-zA-Z0-9]*)\\s+[^\\n;|&]*-(?:[a-zA-Z0-9]*[rR][a-zA-Z0-9]*)))|rmdir\\s+.*[\\/\\\\][sq]|del\\s+.*[\\/\\\\][fqs]|Remove-Item\\s+.*(?:-Recurse\\s+.*-Force|-Force\\s+.*-Recurse))\\b/i,
-    // 2. sudo and superuser privilege escalation
-    /\\b(?:sudo|doas|runas|pkexec)\\b|(?:^|[;&|]\\s*)su(?:\\s+-[a-zA-Z0-9]*|\\s+[a-zA-Z0-9_]+)?\\b/i,
-    // 3. Database DROP TABLE / TRUNCATE / DROP DATABASE
-    /\\b(?:DROP\\s+(?:DATABASE|SCHEMA|TABLE|VIEW|PROCEDURE)|TRUNCATE\\s+(?:TABLE\\s+)?)\\b/i,
-  ];
+  // STRICT MANUAL REVIEW BLACKLIST (ONLY: sudo, rm, -rf, drop)
+  function requiresManualReview(cmdText) {
+    if (!cmdText || typeof cmdText !== 'string') return false;
+    const lower = cmdText.toLowerCase();
 
-  function isStrictlyDangerous(text) {
-    if (!text || typeof text !== 'string') return false;
-    for (const re of STRICT_BLACKLIST) {
-      if (re.test(text)) return true;
-    }
+    // 1. sudo
+    if (/\\bsudo\\b/i.test(lower)) return 'sudo';
+    // 2. rm (or rmdir, del, remove-item)
+    if (/\\b(?:rm|rmdir|del|remove-item)\\b/i.test(lower)) return 'rm';
+    // 3. -rf (-rf, -fr, -r -f)
+    if (/-[a-z0-9]*r[a-z0-9]*f\\b|-[a-z0-9]*f[a-z0-9]*r\\b/i.test(lower) || lower.includes('-rf') || lower.includes('-fr')) return '-rf';
+    // 4. drop (DROP TABLE, drop database, drop)
+    if (/\\bdrop\\b/i.test(lower)) return 'drop';
+
     return false;
-  }
-
-  const ACCEPT_LABELS = [
-    'run', 'run command', 'accept', 'always allow', 'allow',
-    'approve', 'execute', 'proceed', 'confirm', 'yes', 'keep', 'apply'
-  ];
-  const REJECT_LABELS = ['reject', 'cancel', 'deny', 'skip', 'dismiss', 'no', "don't allow"];
-
-  function isInsideSidebar(el) {
-    if (!el) return false;
-    const excluded = [
-      '.sidebar', 'aside', 'nav', '[role="navigation"]',
-      '[data-testid*="sidebar"]', '[data-testid="conversation-row-sidebar"]',
-      '[data-testid*="history"]', '[class*="sidebar"]', '[class*="conversation-list"]',
-      '[class*="history-list"]', '.explorer-viewlet', '.activitybar'
-    ];
-    return Boolean(el.closest(excluded.join(', ')));
   }
 
   // --- UI TOGGLE BUTTON ---
@@ -63,195 +45,164 @@ export const CORE_ENGINE_CODE = `
 
     toggleBtn = document.createElement('button');
     toggleBtn.id = 'antigravity-auto-accept-toggle-btn';
-    toggleBtn.style.cssText = \`
-      position: fixed;
-      top: 10px;
-      right: 80px;
-      z-index: 2147483647;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 12px;
-      border-radius: 9999px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      border: 1px solid;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      user-select: none;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-    \`;
+    toggleBtn.style.cssText = [
+      'position: fixed',
+      'top: 8px',
+      'right: 75px',
+      'z-index: 2147483647',
+      'display: flex',
+      'align-items: center',
+      'gap: 6px',
+      'padding: 5px 14px',
+      'border-radius: 9999px',
+      'font-family: -apple-system, BlinkMacSystemFont, sans-serif',
+      'font-size: 11px',
+      'font-weight: 700',
+      'letter-spacing: 0.3px',
+      'cursor: pointer',
+      'border: 1px solid',
+      'transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+      'user-select: none',
+      'box-shadow: 0 2px 10px rgba(0,0,0,0.2)'
+    ].join('; ');
 
-    function updateButtonUI() {
+    function renderBtn() {
       if (!toggleBtn) return;
       if (isEnabled) {
-        toggleBtn.innerHTML = '⚡ <span>Auto-Accept: ON</span> <span style="opacity:0.75; font-size:10px; margin-left:2px">(' + acceptedCount + ')</span>';
+        toggleBtn.innerHTML = '⚡ Auto-Accept: ON <span style="opacity:0.8; font-weight:normal; margin-left:3px">(' + acceptedCount + ')</span>';
         toggleBtn.style.background = '#052e16';
         toggleBtn.style.color = '#4ade80';
         toggleBtn.style.borderColor = '#16a34a';
-        toggleBtn.style.boxShadow = '0 0 12px rgba(74, 222, 128, 0.25), 0 2px 6px rgba(0,0,0,0.3)';
-        toggleBtn.title = 'Antigravity Auto-Accept is ACTIVE (Click to Pause)\\nAccepted: ' + acceptedCount + ' | Blocked for Review: ' + blockedCount;
+        toggleBtn.style.boxShadow = '0 0 14px rgba(74, 222, 128, 0.3), 0 2px 6px rgba(0,0,0,0.3)';
+        toggleBtn.title = 'Auto-Accepting all terminal commands\\n(Except sudo, rm, -rf, drop)\\nClick to Pause';
       } else {
-        toggleBtn.innerHTML = '⏸️ <span>Auto-Accept: OFF</span>';
+        toggleBtn.innerHTML = '⏸️ Auto-Accept: OFF';
         toggleBtn.style.background = '#27272a';
         toggleBtn.style.color = '#a1a1aa';
         toggleBtn.style.borderColor = '#3f3f46';
         toggleBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-        toggleBtn.title = 'Antigravity Auto-Accept is PAUSED (Click to Enable)\\nAccepted: ' + acceptedCount + ' | Blocked for Review: ' + blockedCount;
+        toggleBtn.title = 'Auto-Accept is PAUSED\\nClick to Enable';
       }
     }
 
-    toggleBtn.addEventListener('click', (e) => {
+    toggleBtn.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
       isEnabled = !isEnabled;
       localStorage.setItem('antigravity_auto_accept_enabled', isEnabled.toString());
-      updateButtonUI();
+      renderBtn();
       console.log('[Antigravity UI] Auto-Accept toggled:', isEnabled ? 'ON' : 'OFF');
-      if (isEnabled) {
-        scanAndAccept();
-      }
-    });
+      if (isEnabled) scanAndExecute();
+    };
 
-    updateButtonUI();
+    renderBtn();
     document.body.appendChild(toggleBtn);
   }
 
-  // --- SCAN & ACCEPT ROUTINE ---
-  function scanAndAccept() {
+  function clickElement(el) {
+    // 1. Direct React Fiber invocation
+    try {
+      const propsKey = Object.keys(el).find(k => k.startsWith('__reactProps'));
+      if (propsKey && el[propsKey] && typeof el[propsKey].onClick === 'function') {
+        el[propsKey].onClick({ defaultPrevented: false, preventDefault: () => {}, stopPropagation: () => {} });
+      }
+    } catch(e) {}
+
+    // 2. Full pointer and mouse events
+    try {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.x + rect.width / 2;
+      const cy = rect.y + rect.height / 2;
+      const eventInit = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, pointerId: 1, isPrimary: true, button: 0, buttons: 1 };
+
+      if (window.PointerEvent) {
+        el.dispatchEvent(new PointerEvent('pointerdown', eventInit));
+        el.dispatchEvent(new PointerEvent('pointerup', eventInit));
+      }
+      el.dispatchEvent(new MouseEvent('mousedown', eventInit));
+      el.dispatchEvent(new MouseEvent('mouseup', eventInit));
+      el.dispatchEvent(new MouseEvent('click', eventInit));
+      if (typeof el.click === 'function') el.click();
+    } catch(e) {}
+  }
+
+  function scanAndExecute() {
     mountToggleButton();
     if (!isEnabled) return;
 
-    try {
-      const elements = document.querySelectorAll('button, [role="button"], [tabindex="0"], a.button, input[type="button"], input[type="submit"]');
+    // Find all run buttons and command steps
+    const candidates = [];
 
-      for (let i = 0; i < elements.length; i++) {
-        const el = elements[i];
-        if (el === toggleBtn || (toggleBtn && toggleBtn.contains(el))) continue;
-        if (isInsideSidebar(el)) continue;
-        if (el.hasAttribute('data-antigravity-auto-accepted')) continue;
-        if (el.disabled || el.getAttribute('aria-disabled') === 'true') continue;
+    // 1. Check all [data-testid="run-command-step"]
+    const steps = document.querySelectorAll('[data-testid="run-command-step"]');
+    for (const s of steps) {
+      const btn = s.querySelector('div[role="button"], button');
+      if (btn) candidates.push({ btn, container: s });
+    }
 
-        const style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) continue;
-
-        const rawText = (el.innerText || el.textContent || el.value || el.getAttribute('aria-label') || '').trim();
-        if (!rawText) continue;
-
-        const lines = rawText.split(/\\r?\\n/).map(s => s.trim()).filter(Boolean);
-        const firstLine = (lines[0] || '').toLowerCase();
-
-        // Skip explicit rejects
-        if (REJECT_LABELS.some(rej => firstLine === rej || firstLine.startsWith(rej + ' '))) {
-          continue;
+    // 2. Check all buttons in page
+    const allBtns = document.querySelectorAll('div[role="button"], button');
+    for (const b of allBtns) {
+      if (b === toggleBtn || (toggleBtn && toggleBtn.contains(b))) continue;
+      const t = (b.innerText || b.textContent || '').trim();
+      if (t.toLowerCase().startsWith('run\\n') || t.toLowerCase().startsWith('run ') || t.toLowerCase() === 'run') {
+        if (!candidates.some(c => c.btn === b)) {
+          candidates.push({ btn: b, container: b.parentElement });
         }
-
-        let isAccept = false;
-        for (const acc of ACCEPT_LABELS) {
-          if (
-            firstLine === acc ||
-            firstLine.startsWith(acc + ' ') ||
-            firstLine.startsWith(acc + ':') ||
-            firstLine.startsWith(acc + '\\n') ||
-            rawText.toLowerCase() === acc
-          ) {
-            isAccept = true;
-            break;
-          }
-        }
-
-        if (!isAccept) {
-          const childSpans = el.querySelectorAll('span, b, strong, div');
-          for (const sp of childSpans) {
-            const spText = (sp.innerText || sp.textContent || '').trim().toLowerCase();
-            if (ACCEPT_LABELS.includes(spText)) {
-              isAccept = true;
-              break;
-            }
-          }
-        }
-
-        if (!isAccept) continue;
-
-        // Extract command text
-        let cmdText = lines.slice(1).join('\\n');
-        let parent = el.parentElement;
-        let depth = 0;
-        let contextText = '';
-        while (parent && depth < 5) {
-          const codeEls = parent.querySelectorAll('pre, code, .command, .code, [class*="command"]');
-          if (codeEls.length > 0) {
-            contextText = Array.from(codeEls).map(c => c.textContent).join('\\n');
-            break;
-          }
-          parent = parent.parentElement;
-          depth++;
-        }
-
-        const fullText = [cmdText, contextText, rawText].filter(Boolean).join('\\n');
-
-        // STRICT MANUAL REVIEW: ONLY rm -rf, sudo, database drop table
-        if (isStrictlyDangerous(fullText)) {
-          console.warn('[Auto-Accept] ⚠️ Dangerous command requires manual review:', fullText.slice(0, 80));
-          el.setAttribute('data-antigravity-auto-accepted', 'blocked-manual-review');
-          blockedCount++;
-          localStorage.setItem('antigravity_blocked_count', blockedCount.toString());
-          if (toggleBtn) {
-            toggleBtn.title = 'Antigravity Auto-Accept is ACTIVE\\nAccepted: ' + acceptedCount + ' | Blocked for Review: ' + blockedCount;
-          }
-          continue;
-        }
-
-        // All other terminal commands and prompts: AUTO-ACCEPT INSTANTLY!
-        el.setAttribute('data-antigravity-auto-accepted', Date.now().toString());
-
-        const cx = rect.x + rect.width / 2;
-        const cy = rect.y + rect.height / 2;
-        const eventInit = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, pointerId: 1, isPrimary: true, button: 0, buttons: 1 };
-
-        if (window.PointerEvent) {
-          el.dispatchEvent(new PointerEvent('pointerdown', eventInit));
-        }
-        el.dispatchEvent(new MouseEvent('mousedown', eventInit));
-        if (window.PointerEvent) {
-          el.dispatchEvent(new PointerEvent('pointerup', eventInit));
-        }
-        el.dispatchEvent(new MouseEvent('mouseup', eventInit));
-        el.dispatchEvent(new MouseEvent('click', eventInit));
-        if (typeof el.click === 'function') {
-          el.click();
-        }
-
-        acceptedCount++;
-        localStorage.setItem('antigravity_accepted_count', acceptedCount.toString());
-        if (toggleBtn) {
-          toggleBtn.innerHTML = '⚡ <span>Auto-Accept: ON</span> <span style="opacity:0.75; font-size:10px; margin-left:2px">(' + acceptedCount + ')</span>';
-          toggleBtn.title = 'Antigravity Auto-Accept is ACTIVE\\nAccepted: ' + acceptedCount + ' | Blocked for Review: ' + blockedCount;
-        }
-        console.log('[Auto-Accept] ✅ Auto-accepted command prompt:', (cmdText || rawText).slice(0, 80));
       }
-    } catch (err) {
-      console.error('[Auto-Accept] Scan error:', err);
+    }
+
+    for (const { btn, container } of candidates) {
+      if (btn.hasAttribute('data-antigravity-processed')) continue;
+
+      const text = (btn.innerText || btn.textContent || '').trim();
+      const lines = text.split(/\\r?\\n/).map(l => l.trim()).filter(Boolean);
+      const firstWord = (lines[0] || '').toLowerCase();
+
+      // Only process pending "Run" actions
+      if (firstWord !== 'run' && !firstWord.startsWith('run')) continue;
+
+      // Extract the full command
+      let commandText = lines.slice(1).join('\\n');
+      if (!commandText && container) {
+        const codeEl = container.querySelector('code, pre, [class*="command"], .font-mono');
+        if (codeEl) commandText = codeEl.textContent.trim();
+        else commandText = container.textContent.trim();
+      }
+
+      // Check if it requires manual review (sudo, rm, -rf, drop)
+      const blockedReason = requiresManualReview(commandText);
+      if (blockedReason) {
+        console.warn('[Auto-Accept] ⚠️ Left for manual review (' + blockedReason + '):', commandText.slice(0, 80));
+        btn.setAttribute('data-antigravity-processed', 'manual-review-' + blockedReason);
+        manualReviewCount++;
+        localStorage.setItem('antigravity_manual_review_count', manualReviewCount.toString());
+        continue;
+      }
+
+      // Auto-accept all other commands!
+      btn.setAttribute('data-antigravity-processed', 'accepted-' + Date.now());
+      clickElement(btn);
+      acceptedCount++;
+      localStorage.setItem('antigravity_accepted_count', acceptedCount.toString());
+      if (toggleBtn) {
+        toggleBtn.innerHTML = '⚡ Auto-Accept: ON <span style="opacity:0.8; font-weight:normal; margin-left:3px">(' + acceptedCount + ')</span>';
+      }
+      console.log('[Auto-Accept] ✅ Auto-accepted command:', (commandText || text).slice(0, 80));
     }
   }
 
   function startEngine() {
     mountToggleButton();
-    scanAndAccept();
+    scanAndExecute();
 
     const targetNode = document.body || document.documentElement;
     if (targetNode) {
-      const observer = new MutationObserver(() => {
-        scanAndAccept();
-      });
-      observer.observe(targetNode, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'disabled'] });
+      const observer = new MutationObserver(() => scanAndExecute());
+      observer.observe(targetNode, { childList: true, subtree: true, attributes: true });
     }
 
-    // High frequency interval check (100ms) for instant auto-accept
-    setInterval(scanAndAccept, 100);
+    setInterval(scanAndExecute, 50);
   }
 
   if (document.readyState === 'loading') {
@@ -261,7 +212,7 @@ export const CORE_ENGINE_CODE = `
   }
 })();
 // =========================================================================
-// END ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE
+// END ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE
 // =========================================================================
 `;
 
@@ -366,10 +317,9 @@ export async function patchDesktopApp(asarPath = null) {
     }
 
     const currentPreload = fs.readFileSync(preloadPath, 'utf8');
-    const cleanPreload = currentPreload.split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
+    const cleanPreload = currentPreload.split('// =========================================================================\n// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE')[0].split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
 
     console.log(`[core-patcher] Injecting Native Auto-Accept Engine & UI into preload.js...`);
-    // Inject both direct DOM runner and script injector into main world
     const injectorWrapper = `
 // Inject into Main World
 try {
@@ -422,7 +372,7 @@ export async function patchIdeApp(agentJsPath = null) {
   }
 
   const currentJs = fs.readFileSync(targetJs, 'utf8');
-  const cleanJs = currentJs.split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
+  const cleanJs = currentJs.split('// =========================================================================\n// ANTIGRAVITY NATIVE AUTO-ACCEPT ENGINE')[0].split('// =========================================================================\n// ANTIGRAVITY NATIVE CORE AUTO-ACCEPT ENGINE')[0];
 
   console.log(`[core-patcher] Injecting Native Auto-Accept Engine & UI into jetskiAgent.js...`);
   const updatedJs = cleanJs + '\n\n' + CORE_ENGINE_CODE;
