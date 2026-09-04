@@ -1,0 +1,46 @@
+{
+  "name": "antigravity-auto-accept",
+  "displayName": "Antigravity Auto-Accept",
+  "description": "Auto-Accept permissions, commands, and interactive question modals in Antigravity IDE and Antigravity Desktop",
+  "version": "1.0.0",
+  "publisher": "antigravity-community",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravity-auto-accept.toggle",
+        "title": "Toggle Auto-Accept",
+        "category": "Antigravity Auto-Accept"
+      },
+      {
+        "command": "antigravity-auto-accept.enable",
+        "title": "Enable Auto-Accept",
+        "category": "Antigravity Auto-Accept"
+      },
+      {
+        "command": "antigravity-auto-accept.disable",
+        "title": "Disable Auto-Accept",
+        "category": "Antigravity Auto-Accept"
+      }
+    ],
+    "configuration": {
+      "title": "Antigravity Auto-Accept",
+      "properties": {
+        "antigravityAutoAccept.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether Auto-Accept is enabled in Antigravity IDE"
+        }
+      }
+    }
+  }
+}

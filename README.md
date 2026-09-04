@@ -88,19 +88,23 @@ npm link
 You can use this tool in two distinct ways:
 
 ### Approach A: Native Core Patch (Recommended 🌟)
-Directly injects the auto-accept engine and draggable toggle button into the Antigravity desktop application (`app.asar`) and Antigravity IDE (`jetskiAgent.js`).
+Directly integrates the auto-accept engine and toggle controls into the Antigravity desktop application (`app.asar`) and Antigravity IDE (`workbench.js` + `jetskiAgent.js` + native extension).
+Includes an automatic `product.json` integrity checksum recalculator to prevent any "installation corrupted" warnings from VS Code's `IntegrityService`.
 
-1. **Patch Antigravity**:
+1. **Patch Antigravity Desktop & IDE**:
    ```bash
    antigravity-auto-accept patch-core
    ```
-2. **Restart Antigravity**:
-   Close and relaunch Antigravity.
+   *This automatically patches `app.asar`, `workbench.js`, `jetskiAgent.js`, updates `product.json` checksums, and installs the IDE extension.*
+
+2. **Restart Antigravity Desktop & Antigravity IDE**:
+   Close and relaunch both applications.
+
 3. **Enjoy Zero-Friction Coding**:
    - In **Antigravity Desktop**: You will see the **`⚡ Auto-Accept: ON`** button in the **top status bar** right beside the three-dot menu on the right.
-   - In **Antigravity IDE**: You will see the **`⚡ Auto-Accept: ON`** indicator in the **bottom status bar**.
+   - In **Antigravity IDE**: You will see the **`⚡ Auto-Accept: ON`** indicator in the **bottom status bar** (VS Code status bar).
    - All terminal commands, permissions, and question modals are accepted automatically.
-   - Click the button to pause anytime (`⏸️ Auto-Accept: OFF`).
+   - Click the button anytime to pause (`⏸️ Auto-Accept: OFF`).
 
 To remove the patch and restore original application files:
 ```bash

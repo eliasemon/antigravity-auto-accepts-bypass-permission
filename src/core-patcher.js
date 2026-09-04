@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
 
 export const CORE_ENGINE_CODE = `
 // =========================================================================
@@ -38,15 +40,31 @@ export const CORE_ENGINE_CODE = `
   // --- DUAL-PLACEMENT STATUS BAR MOUNTING ---
   function mountStatusBarUI() {
     // =========================================================================
-    // 1. ANTIGRAVITY IDE: Bottom Status Bar (.monaco-workbench .part.statusbar)
+    // 1. ANTIGRAVITY IDE: Bottom Status Bar
     // =========================================================================
-    const ideStatusBar = document.querySelector(
-      '.monaco-workbench .part.statusbar .right-items, .monaco-workbench .part.statusbar .items-container, #workbench\\\\.parts\\\\.statusbar, footer.statusbar, .part.statusbar'
-    );
+    const ideStatusBar = document.getElementById('workbench.parts.statusbar') ||
+                         document.querySelector('.monaco-workbench .part.statusbar, footer.statusbar, .part.statusbar');
     if (ideStatusBar) {
-      if (document.getElementById('antigravity-ide-statusbar-btn')) return;
+      // Check if native VS Code extension has already rendered an Auto-Accept status bar item
+      const extensionItem = Array.from(ideStatusBar.querySelectorAll('.statusbar-item')).find(
+        el => el.id !== 'antigravity-ide-statusbar-btn' && (el.textContent || '').includes('Auto-Accept')
+      );
+      if (extensionItem) {
+        return;
+      }
 
-      const targetContainer = ideStatusBar.querySelector('.right-items, .items-container') || ideStatusBar;
+      const existingIdeBtn = document.getElementById('antigravity-ide-statusbar-btn');
+      if (existingIdeBtn && document.body.contains(existingIdeBtn)) {
+        return;
+      }
+      if (existingIdeBtn) {
+        existingIdeBtn.remove();
+      }
+
+      const targetContainer = ideStatusBar.querySelector('.items-container.right-items') ||
+                              ideStatusBar.querySelector('.right-items') ||
+                              ideStatusBar.querySelector('.items-container') ||
+                              ideStatusBar;
 
       const item = document.createElement('div');
       item.id = 'antigravity-ide-statusbar-btn';
@@ -58,7 +76,10 @@ export const CORE_ENGINE_CODE = `
         'cursor: pointer',
         'user-select: none',
         '-webkit-user-select: none',
-        'margin-left: 4px'
+        'margin-left: 6px',
+        'margin-right: 6px',
+        'z-index: 10',
+        'order: 9999'
       ].join('; ');
 
       const link = document.createElement('a');
@@ -68,7 +89,7 @@ export const CORE_ENGINE_CODE = `
       link.style.cssText = [
         'display: inline-flex',
         'align-items: center',
-        'gap: 4px',
+        'gap: 5px',
         'height: 100%',
         'padding: 0 8px',
         'font-size: 11px',
@@ -76,18 +97,18 @@ export const CORE_ENGINE_CODE = `
         'cursor: pointer',
         'text-decoration: none',
         'transition: background 0.15s ease',
-        'border-radius: 3px'
+        'border-radius: 4px'
       ].join('; ');
 
       function renderIdeItem() {
         if (isEnabled) {
-          link.innerHTML = '⚡ Auto-Accept: <span style="color:#4ade80">ON</span> <span style="opacity:0.75; font-size:10px">(' + acceptedCount + ')</span>';
+          link.innerHTML = '⚡ Auto-Accept: <span style="color:#4ade80;font-weight:700">ON</span> <span style="opacity:0.75; font-size:10px">(' + acceptedCount + ')</span>';
           link.style.color = '#e4e4e7';
-          link.title = '⚡ Antigravity Auto-Accept is ACTIVE in IDE (Click to Pause)';
+          link.title = '⚡ Antigravity Auto-Accept is ACTIVE in IDE\\n(Click to Pause)';
         } else {
           link.innerHTML = '⏸️ Auto-Accept: <span style="color:#a1a1aa">OFF</span>';
           link.style.color = '#71717a';
-          link.title = '⏸️ Antigravity Auto-Accept is PAUSED (Click to Enable)';
+          link.title = '⏸️ Antigravity Auto-Accept is PAUSED\\n(Click to Enable)';
         }
       }
 
@@ -106,6 +127,7 @@ export const CORE_ENGINE_CODE = `
       renderIdeItem();
       item.appendChild(link);
       targetContainer.appendChild(item);
+      console.log('[Antigravity Core] ✅ Mounted Auto-Accept in IDE Bottom Status Bar');
       return;
     }
 
@@ -165,6 +187,7 @@ export const CORE_ENGINE_CODE = `
 
       renderDesktopBtn();
       moreBtn.parentElement.insertBefore(btn, moreBtn);
+      console.log('[Antigravity Core] ✅ Mounted Auto-Accept in Desktop Top Status Bar beside three-dot menu');
       return;
     }
   }
@@ -306,7 +329,7 @@ export const CORE_ENGINE_CODE = `
     if (ideItem && isEnabled) {
       const link = ideItem.querySelector('.statusbar-item-label');
       if (link) {
-        link.innerHTML = '⚡ Auto-Accept: <span style="color:#4ade80">ON</span> <span style="opacity:0.75; font-size:10px">(' + acceptedCount + ')</span>';
+        link.innerHTML = '⚡ Auto-Accept: <span style="color:#4ade80;font-weight:700">ON</span> <span style="opacity:0.75; font-size:10px">(' + acceptedCount + ')</span>';
       }
     }
   }
@@ -321,7 +344,7 @@ export const CORE_ENGINE_CODE = `
       observer.observe(targetNode, { childList: true, subtree: true, attributes: true });
     }
 
-    setInterval(runPreciseScanner, 25);
+    setInterval(runPreciseScanner, 50);
   }
 
   if (document.readyState === 'loading') {
@@ -343,6 +366,7 @@ export function getAntigravityAppPaths() {
     desktopAppAsar: null,
     ideAgentJs: null,
     ideWorkbenchJs: null,
+    ideProductJson: null,
   };
 
   if (process.platform === 'darwin') {
@@ -359,6 +383,11 @@ export function getAntigravityAppPaths() {
     const ideWorkbenchJs = '/Applications/Antigravity IDE.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/workbench.js';
     if (fs.existsSync(ideWorkbenchJs)) {
       paths.ideWorkbenchJs = ideWorkbenchJs;
+    }
+
+    const ideProductJson = '/Applications/Antigravity IDE.app/Contents/Resources/app/product.json';
+    if (fs.existsSync(ideProductJson)) {
+      paths.ideProductJson = ideProductJson;
     }
   } else if (process.platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
@@ -393,6 +422,17 @@ export function getAntigravityAppPaths() {
     for (const c of winWorkbenchCandidates) {
       if (fs.existsSync(c)) {
         paths.ideWorkbenchJs = c;
+        break;
+      }
+    }
+
+    const winProductCandidates = [
+      path.join(localAppData, 'Programs', 'Antigravity IDE', 'resources', 'app', 'product.json'),
+      path.join(programFiles, 'Antigravity IDE', 'resources', 'app', 'product.json'),
+    ];
+    for (const c of winProductCandidates) {
+      if (fs.existsSync(c)) {
+        paths.ideProductJson = c;
         break;
       }
     }
@@ -431,9 +471,27 @@ export function getAntigravityAppPaths() {
         break;
       }
     }
+
+    const linuxProductCandidates = [
+      '/opt/Antigravity IDE/resources/app/product.json',
+      '/usr/lib/antigravity-ide/resources/app/product.json',
+    ];
+    for (const c of linuxProductCandidates) {
+      if (fs.existsSync(c)) {
+        paths.ideProductJson = c;
+        break;
+      }
+    }
   }
 
   return paths;
+}
+
+/**
+ * Computes VS Code checksum for a file buffer (SHA-256 base64 without '=' padding)
+ */
+function computeVSCodeChecksum(contentBuffer) {
+  return crypto.createHash('sha256').update(contentBuffer).digest('base64').replace(/=+$/, '');
 }
 
 /**
@@ -505,10 +563,10 @@ ${CORE_ENGINE_CODE}
 }
 
 /**
- * Directly patches the Antigravity IDE App (workbench.js + jetskiAgent.js)
+ * Directly patches the Antigravity IDE App (workbench.js + jetskiAgent.js + product.json checksums)
  */
 export async function patchIdeApp(agentJsPath = null) {
-  const { ideAgentJs, ideWorkbenchJs } = getAntigravityAppPaths();
+  const { ideAgentJs, ideWorkbenchJs, ideProductJson } = getAntigravityAppPaths();
   const targetAgentJs = agentJsPath || ideAgentJs;
 
   let patchedCount = 0;
@@ -555,19 +613,90 @@ export async function patchIdeApp(agentJsPath = null) {
     patchedCount++;
   }
 
+  // 3. Update product.json checksums to eliminate "installation corrupted" warnings
+  if (ideProductJson && fs.existsSync(ideProductJson)) {
+    updateProductChecksums(ideProductJson);
+  }
+
+  // 4. Install native IDE extension to ensure permanent status bar button and command palette integration
+  installIdeExtension();
+
   if (patchedCount === 0) {
     throw new Error(`Neither jetskiAgent.js nor workbench.js found in Antigravity IDE`);
   }
 
-  console.log(`[core-patcher] ✅ Antigravity IDE patched successfully (${patchedCount} files)!`);
+  console.log(`[core-patcher] ✅ Antigravity IDE patched successfully (${patchedCount} files + checksums updated + extension installed)!`);
   return { success: true, patchedCount };
+}
+
+/**
+ * Updates all product.json checksums to match current disk content
+ */
+export function updateProductChecksums(ideProductJsonPath) {
+  if (!ideProductJsonPath || !fs.existsSync(ideProductJsonPath)) return false;
+  try {
+    const backupProductJson = `${ideProductJsonPath}.orig`;
+    if (!fs.existsSync(backupProductJson)) {
+      console.log(`[core-patcher] Creating original backup: ${backupProductJson}`);
+      fs.copyFileSync(ideProductJsonPath, backupProductJson);
+    }
+
+    const appDir = path.dirname(ideProductJsonPath);
+    const appOut = path.join(appDir, 'out');
+    const product = JSON.parse(fs.readFileSync(ideProductJsonPath, 'utf8'));
+    if (!product.checksums) return false;
+
+    let updatedCount = 0;
+    for (const [relPath, curHash] of Object.entries(product.checksums)) {
+      const fullPath = path.join(appOut, relPath);
+      if (fs.existsSync(fullPath)) {
+        const realHash = computeVSCodeChecksum(fs.readFileSync(fullPath));
+        if (realHash !== curHash) {
+          console.log(`[core-patcher] Updating checksum for ${relPath}: ${curHash} -> ${realHash}`);
+          product.checksums[relPath] = realHash;
+          updatedCount++;
+        }
+      }
+    }
+    fs.writeFileSync(ideProductJsonPath, JSON.stringify(product, null, '\t'), 'utf8');
+    console.log(`[core-patcher] ✅ Verified & updated ${updatedCount} checksums in product.json. Integrity verification will pass cleanly!`);
+    return true;
+  } catch (e) {
+    console.warn(`[core-patcher] Could not update product.json checksums: ${e.message}`);
+    return false;
+  }
+}
+
+/**
+ * Installs the native Antigravity Auto-Accept extension into Antigravity IDE
+ */
+export function installIdeExtension() {
+  const extDir = path.join(os.homedir(), '.antigravity-ide', 'extensions', 'antigravity-auto-accept');
+  try {
+    fs.mkdirSync(extDir, { recursive: true });
+    const localExtSrc = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'ide-extension');
+    if (fs.existsSync(localExtSrc)) {
+      for (const f of fs.readdirSync(localExtSrc)) {
+        const srcFile = path.join(localExtSrc, f);
+        const destFile = path.join(extDir, f);
+        if (fs.statSync(srcFile).isFile()) {
+          fs.copyFileSync(srcFile, destFile);
+        }
+      }
+      console.log(`[core-patcher] ✅ Installed Antigravity Auto-Accept IDE extension to: ${extDir}`);
+      return true;
+    }
+  } catch (e) {
+    console.warn(`[core-patcher] Could not install IDE extension: ${e.message}`);
+  }
+  return false;
 }
 
 /**
  * Reverts all core patches using the original backups
  */
 export async function unpatchCore() {
-  const { desktopAppAsar, ideAgentJs, ideWorkbenchJs } = getAntigravityAppPaths();
+  const { desktopAppAsar, ideAgentJs, ideWorkbenchJs, ideProductJson } = getAntigravityAppPaths();
   let restoredCount = 0;
 
   if (desktopAppAsar) {
@@ -595,6 +724,24 @@ export async function unpatchCore() {
       fs.copyFileSync(backupJs, ideAgentJs);
       restoredCount++;
     }
+  }
+
+  if (ideProductJson) {
+    const backupProduct = `${ideProductJson}.orig`;
+    if (fs.existsSync(backupProduct)) {
+      console.log(`[core-patcher] Restoring original ${ideProductJson}...`);
+      fs.copyFileSync(backupProduct, ideProductJson);
+      restoredCount++;
+    }
+  }
+
+  // Also clean up installed IDE extension if present
+  const extDir = path.join(os.homedir(), '.antigravity-ide', 'extensions', 'antigravity-auto-accept');
+  if (fs.existsSync(extDir)) {
+    try {
+      fs.rmSync(extDir, { recursive: true, force: true });
+      console.log(`[core-patcher] Removed IDE extension: ${extDir}`);
+    } catch (e) {}
   }
 
   console.log(`[core-patcher] ✅ Restored ${restoredCount} original core files.`);
