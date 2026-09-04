@@ -333,6 +333,41 @@ export async function runCLI(args) {
       break;
     }
 
+    case 'watch': {
+      console.log('====================================================');
+      console.log('👁️  Antigravity Auto-Accept Update Watcher');
+      console.log('====================================================');
+      const { UpdateWatcher } = await import('./watcher.js');
+      const watcher = new UpdateWatcher();
+      watcher.start();
+
+      process.on('SIGINT', () => {
+        watcher.stop();
+        process.exit(0);
+      });
+      process.on('SIGTERM', () => {
+        watcher.stop();
+        process.exit(0);
+      });
+      break;
+    }
+
+    case 'install-service':
+    case 'auto-persist': {
+      console.log('====================================================');
+      console.log('🛠️  Installing Antigravity Auto-Persistence Service');
+      console.log('====================================================');
+      const { installPersistenceService } = await import('./watcher.js');
+      const res = installPersistenceService();
+      if (res.success) {
+        console.log(`🎉 Persistence service installed at: ${res.path}`);
+        console.log('Auto-accept patches will now automatically persist across app updates and restarts!');
+      } else {
+        console.error(`❌ Installation failed: ${res.error}`);
+      }
+      break;
+    }
+
     case '--help':
     case '-h':
     case 'help':
@@ -353,6 +388,8 @@ Commands:
   resume          Resume auto-accepting
   patch-core      Inject native auto-accept directly into Antigravity core runtime
   unpatch-core    Revert core runtime back to original factory state
+  watch           Watch application files and automatically re-patch on updates
+  install-service Install background service to persist auto-accept across updates
   doctor          Diagnose Antigravity process & remote-debugging-port
   launch          Launch Antigravity with remote debugging port exposed
   config show     Display active configuration
