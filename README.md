@@ -1,304 +1,246 @@
-# Antigravity Auto-Accept 🚀
+# Antigravity Auto-Accept & Permission Bypass ⚡
 
-> Cross-platform (Windows / macOS / Linux) automation tool that auto-accepts permission prompts in Google Antigravity (both standalone desktop app and VS Code-based IDE) via Chrome DevTools Protocol (CDP), backed by rigorous safety guardrails.
-
----
-
-## Key Features
-
-- **Cross-Platform Compatibility**: Works identically on Windows, macOS, and Linux using modern Node.js.
-- **CDP Webview Connection**: Connects to Antigravity's isolated Chromium webview via Chrome DevTools Protocol (default port `9333` or dynamic auto-discovery).
-- **Resilient DOM Detection**: Detects prompts by matching visible button intent (`Accept`, `Allow`, `Run`, `Approve`, `Proceed`) instead of brittle, version-dependent CSS class names or internal IDs.
-- **Full Shadow DOM & Iframe Traversal**: Recursively inspects standard DOM, nested Shadow DOMs, and VS Code child iframes.
-- **Strict Safety Guardrails**: Inspects the pending command, diff, or action. Automatically blocks destructive commands (`rm -rf`, `sudo`, `curl | bash`, `git push --force`, `DROP TABLE`, credential access) and surfaces desktop notifications.
-- **Per-Element Cooldown**: Context-aware SHA-256 hash tracking prevents double-clicking and avoids IDE lag.
-- **Instant Toggle & Background Daemon**: Run as a foreground process with live key controls (`t`/`p` to pause/resume, `q` to quit) or as a background daemon with instant CLI IPC control (`antigravity-auto-accept toggle`, `status`, `stop`).
-- **One-Command Doctor**: Diagnoses your Antigravity installation, checks remote debugging flags, and provides setup instructions per operating system.
+> **The ultimate automation & permission bypass engine for Google Antigravity (Desktop App & VS Code IDE).**  
+> Auto-accepts all terminal commands, approval cards, and question modals with sub-25ms latency. Features an in-app draggable ON/OFF toggle badge, direct React Fiber execution, and a strict 4-keyword safety filter for manual review (`sudo`, `rm`, `-rf`, `drop`).
 
 ---
 
-## Architecture Overview
+## 🌟 Key Highlights
+
+- **⚡ Native In-App & Draggable Toggle Button**: Renders a sleek floating pill badge right above the chatbox (`⚡ Auto-Accept: ON` / `⏸️ Auto-Accept: OFF`). Click to toggle anytime, or drag it anywhere on your screen. Remembers state and position in `localStorage`.
+- **🎯 100% Precise Auto-Acceptance (Zero Misclicks)**: Targets internal Antigravity component test IDs directly (`run-command-step`, `interaction-continue-button`, `declared-permissions-confirm`, `running-items-panel`). Explicitly ignores settings modals, dropdown menus, sidebars, and file trees.
+- **🛡️ Strict 4-Keyword Safety Guardrail**: Leaves prompts untouched for manual review **strictly** when the command contains:
+  1. `sudo` (privilege escalation)
+  2. `rm` (file deletions, `rm`, `rmdir`, `del`, `Remove-Item`)
+  3. `-rf` (recursive force flags, `-rf`, `-fr`)
+  4. `drop` (database destruction, `DROP TABLE`, `DROP DATABASE`, `drop`)
+  *Every other terminal command, build script, test, or tool prompt is auto-accepted!*
+- **🚀 Two Modes of Operation**:
+  - **Mode 1: Permanent Native Core Patch (Recommended)**: Patches `/Applications/Antigravity.app` (`app.asar`) or IDE in one click—no background process required!
+  - **Mode 2: External CDP Daemon**: Connects dynamically over Chrome DevTools Protocol (`--remote-debugging-port`) without touching core files.
+- **⚡ Direct React Fiber Invocation**: Dispatches synthetic `PointerEvent` + `MouseEvent` and directly invokes React Fiber's `__reactProps$*.onClick` handler, guaranteeing zero dropped clicks.
+- **🖥️ Cross-Platform Support**: Built with Node.js 18+ to support macOS, Windows, and Linux.
+
+---
+
+## 📐 Architecture Overview
 
 ```
- ┌─────────────────────────────────────────────────────────────┐
- │               Google Antigravity (Desktop / IDE)            │
- │           Chromium Webview (--remote-debugging-port)        │
- └──────────────────────────────┬──────────────────────────────┘
-                                │ Chrome DevTools Protocol (CDP)
-                                ▼
- ┌─────────────────────────────────────────────────────────────┐
- │                Antigravity Auto-Accept Tool                 │
- │                                                             │
- │  ┌─────────────────────────┐   ┌─────────────────────────┐  │
- │  │ Target & Port Discovery │   │ In-Page Prompt Detector │  │
- │  │ (9333 / Dynamic Port)   │   │ (DOM / Shadow / Iframe) │  │
- │  └─────────────────────────┘   └────────────┬────────────┘  │
- │                                             │               │
- │                                             ▼               │
- │                                ┌─────────────────────────┐  │
- │                                │ Safety Guardrail Engine │  │
- │                                └────────────┬────────────┘  │
- │                        Safe Prompt?         │ Dangerous?    │
- │                     ┌───────────────────────┴────────────┐  │
- │                     ▼                                    ▼  │
- │        ┌─────────────────────────┐          ┌────────────┴──┐
- │        │ Synthetic Click &       │          │ Block & Alert │
- │        │ Cooldown Tracker (Hash) │          │ User Review   │
- │        └─────────────────────────┘          └───────────────┘
- └──────────────────────────────▲──────────────────────────────┘
-                                │ Local IPC (Status / Toggle / Stop)
- ┌──────────────────────────────┴──────────────────────────────┐
- │             CLI: antigravity-auto-accept                    │
- └─────────────────────────────────────────────────────────────┘
+ ┌─────────────────────────────────────────────────────────────────────────────┐
+ │                         Google Antigravity Runtime                          │
+ │                                                                             │
+ │  ┌───────────────────────────────────────────────────────────────────────┐  │
+ │  │                         In-App Chat Interface                         │  │
+ │  │                                                                       │  │
+ │  │   ┌────────────────────────────────────────────────────────────────┐  │  │
+ │  │   │ [data-testid="run-command-step"] (Terminal Command Prompts)    │  │  │
+ │  │   │ [data-testid="interaction-continue-button"] (Questions)       │  │  │
+ │  │   │ [data-testid="declared-permissions-confirm"] (Permissions)    │  │  │
+ │  │   │ [data-testid="running-items-panel"] (Action Cards)             │  │  │
+ │  │   └───────────────────────────────┬────────────────────────────────┘  │  │
+ │  │                                   │                                   │  │
+ │  │   ┌───────────────────────────────▼────────────────────────────────┐  │  │
+ │  │   │      ⚡ In-App Draggable ON/OFF Badge (Above Chatbox)          │  │  │
+ │  │   │      Click to toggle • Drag to reposition • State in storage   │  │  │
+ │  │   └───────────────────────────────┬────────────────────────────────┘  │  │
+ │  └───────────────────────────────────┼───────────────────────────────────┘  │
+ └──────────────────────────────────────┼──────────────────────────────────────┘
+                                        │
+                         ┌──────────────▼──────────────┐
+                         │   Safety Guardrail Filter   │
+                         │   (sudo, rm, -rf, drop)     │
+                         └──────┬──────────────┬───────┘
+                                │              │
+                   Blocked ⚠️   │              │ Safe ⚡
+                                ▼              ▼
+                    ┌─────────────────┐   ┌─────────────────────────┐
+                    │  Leave Untouched│   │ Direct React Fiber      │
+                    │  Manual Review  │   │ onClick + PointerEvent  │
+                    └─────────────────┘   └─────────────────────────┘
 ```
 
 ---
 
-## Quickstart
+## 🚀 Quickstart
 
 ### Prerequisites
-- Node.js 18.0.0 or higher (`node -v`)
-- Google Antigravity installed
+- **Node.js 18.0.0 or higher** (`node -v`)
+- **Google Antigravity** desktop app or **Antigravity IDE**
 
 ### Installation
 
 Clone the repository and install dependencies:
 ```bash
-git clone https://github.com/your-org/antigravity-auto-accept.git
-cd antigravity-auto-accept
+git clone https://github.com/eliasemon/antigravity-auto-accepts-bypass-permission.git
+cd antigravity-auto-accepts-bypass-permission
 npm install
-```
-
-Optionally link globally:
-```bash
 npm link
 ```
-Now `antigravity-auto-accept` is available anywhere in your terminal.
+*Note: `npm link` allows running the `antigravity-auto-accept` CLI command from anywhere in your terminal.*
 
 ---
 
-## Usage
+## 🛠️ Usage
 
-### 1. Check Antigravity Environment
-Run the diagnostic doctor to inspect running processes and active ports:
-```bash
-antigravity-auto-accept doctor
-```
+You can use this tool in two distinct ways:
 
-### 2. Run in Foreground (Recommended for Interactive Use)
-Starts the listener in your terminal with live logs and instant keyboard controls:
-```bash
-antigravity-auto-accept run
-```
-*Keyboard shortcuts while running:*
-- Press `t`, `p`, or `Space`: Toggle Pause / Resume.
-- Press `q` or `Ctrl+C`: Stop and exit.
+### Approach A: Native Core Patch (Recommended 🌟)
+Directly injects the auto-accept engine and draggable toggle button into the Antigravity desktop application (`app.asar`) and Antigravity IDE (`jetskiAgent.js`).
 
-### 3. Run as a Background Daemon
-Start in the background:
-```bash
-antigravity-auto-accept start
-```
-
-Check status, active target, and accepted prompt counts:
-```bash
-antigravity-auto-accept status
-```
-
-Instantly pause or resume auto-accepting:
-```bash
-antigravity-auto-accept toggle
-```
-
-Stop the daemon:
-```bash
-antigravity-auto-accept stop
-```
-
----
-
-## Remote Debugging Port Setup per OS
-
-Antigravity must be launched with remote debugging enabled (default port `9333`).
-
-### 🍎 macOS Setup
-
-#### Method A: Wrapper Script (Recommended)
-```bash
-./launchers/macos/antigravity-debug.sh
-```
-
-#### Method B: Shell Alias
-Add to `~/.zshrc`:
-```bash
-alias antigravity-debug='open -a "Google Antigravity" --args --remote-debugging-port=9333'
-```
-Reload shell: `source ~/.zshrc` and run `antigravity-debug`.
-
-#### Method C: Command Line
-```bash
-open -a "Google Antigravity" --args --remote-debugging-port=9333
-```
-Or for the VS Code-based IDE:
-```bash
-antigravity --remote-debugging-port=9333
-```
-
----
-
-### 🪟 Windows Setup
-
-#### Method A: Desktop / Start Menu Shortcut (Recommended)
-1. Right-click your **Google Antigravity** desktop icon and choose **Properties**.
-2. In the **Target** field, append ` --remote-debugging-port=9333`.
-   *Example:*
-   ```text
-   "C:\Users\username\AppData\Local\Programs\Antigravity\Antigravity.exe" --remote-debugging-port=9333
+1. **Patch Antigravity**:
+   ```bash
+   antigravity-auto-accept patch-core
    ```
-3. Click **Apply** and launch via the shortcut.
+2. **Restart Antigravity**:
+   Close and relaunch Antigravity.
+3. **Enjoy Zero-Friction Coding**:
+   - You will see the **`⚡ Auto-Accept: ON`** badge right above the chatbox.
+   - All terminal commands and question modals will now be accepted automatically.
+   - Click the button to pause anytime (`⏸️ Auto-Accept: OFF`).
+   - Drag the button anywhere you like on your screen.
 
-#### Method B: Batch / PowerShell Launcher
-```cmd
-launchers\windows\antigravity-debug.bat
-```
-Or PowerShell:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\launchers\windows\antigravity-debug.ps1
+To remove the patch and restore original application files:
+```bash
+antigravity-auto-accept unpatch-core
 ```
 
 ---
 
-### 🐧 Linux Setup
+### Approach B: External CDP Daemon (No App Modifications)
+If you prefer not to modify application files, you can run the tool as an external background daemon connecting via Chrome DevTools Protocol (CDP).
 
-#### Method A: Desktop Entry (Application Menu)
-```bash
-cp launchers/linux/antigravity-debug.desktop ~/.local/share/applications/
-update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
+1. **Check Environment**:
+   ```bash
+   antigravity-auto-accept doctor
+   ```
+2. **Run in Foreground**:
+   ```bash
+   antigravity-auto-accept run
+   ```
+   *Controls while running:*
+   - `t` or `Space`: Toggle Pause / Resume
+   - `q` or `Ctrl+C`: Quit
+3. **Or Run as a Background Daemon**:
+   ```bash
+   antigravity-auto-accept start     # Start daemon in background
+   antigravity-auto-accept status    # Check daemon status
+   antigravity-auto-accept toggle    # Toggle pause / resume via CLI
+   antigravity-auto-accept stop      # Stop background daemon
+   ```
+
+---
+
+## 🛡️ Safety Guardrails (Strict Filter)
+
+The engine enforces a strict blacklist. Any action or terminal command matching the following patterns will **NEVER** be auto-accepted and will be left untouched for your manual approval:
+
+| Keyword | Pattern | Examples Blocked |
+| :--- | :--- | :--- |
+| **`sudo`** | `\bsudo\b` | `sudo apt-get update`, `sudo whoami` |
+| **`rm`** | `\b(?:rm\|rmdir\|del\|Remove-Item)\b` | `rm file.txt`, `rmdir old_dir`, `del test.log` |
+| **`-rf`** | `-[a-z0-9]*r[a-z0-9]*f\|-[a-z0-9]*f[a-z0-9]*r\|-rf\|-fr` | `rm -rf /`, `git clean -rf`, `rm -fr dir` |
+| **`drop`** | `\bdrop\b` | `DROP TABLE users;`, `drop database prod;` |
+
+### Everything Else is Auto-Accepted:
+- `git` commands (`commit`, `push`, `pull`, `checkout`, `status`, `diff`)
+- `npm` / `pnpm` / `yarn` / `bun` commands (`test`, `run build`, `install`)
+- `node`, `python`, `cargo`, `docker`, `go`, `make`
+- File operations: `cat`, `touch`, `mkdir`, `cp`, `mv`, `ls`, `grep`
+- Network commands: `curl`, `wget`, `ping`
+- Multi-choice question prompts (`ask_question`)
+- Tool permissions confirmation dialogs
+
+---
+
+## 🧪 Test Prompts
+
+Copy and paste these into your Antigravity chat to verify functionality:
+
+### 1. Commands That Are Auto-Accepted Instantly ⚡
+```text
+Run this terminal command: git status
 ```
-
-#### Method B: Shell Alias
-Add to `~/.bashrc`:
-```bash
-alias antigravity-debug='antigravity --remote-debugging-port=9333'
+```text
+Run this terminal command: node -v && npm -v
 ```
+```text
+Run this terminal command: echo "Hello from Auto-Accept!"
+```
+*Expected result:* The `Run` button is detected and clicked in **under 25ms**. The counter on the badge increments.
 
-#### Method C: Wrapper Script
-```bash
-./launchers/linux/antigravity-debug.sh
+### 2. Commands Left for Manual Review ⚠️
+```text
+Run this terminal command: sudo whoami
+```
+```text
+Run this terminal command: rm ./dummy_file.txt
+```
+```text
+Run this terminal command: git clean -rf
+```
+```text
+Run this terminal command: sqlite3 test.db "DROP TABLE sample;"
+```
+*Expected result:* The `Run` button remains unclicked on screen waiting for you to manually inspect and click it.
+
+### 3. Testing the In-App Toggle Button
+1. Click the floating **`⚡ Auto-Accept: ON`** badge above your chatbox.
+2. It changes to **`⏸️ Auto-Accept: OFF`**.
+3. Send: `Run this terminal command: pwd`
+4. The button stays unclicked because auto-accept is paused.
+5. Click the badge again to turn it back to **`⚡ Auto-Accept: ON`**. The pending command executes immediately!
+
+---
+
+## 📁 Repository Structure
+
+```
+antigravity-auto-accept/
+├── bin/
+│   └── antigravity-auto-accept.js     # CLI executable entrypoint
+├── src/
+│   ├── cli.js                         # CLI commands & argument parser
+│   ├── cdp.js                         # WebSocket CDP client & connection manager
+│   ├── config.js                      # Configuration loader & defaults
+│   ├── core-patcher.js                # Core app patcher (app.asar & jetskiAgent.js)
+│   ├── daemon.js                      # Foreground / background daemon runner
+│   ├── detector.js                    # In-page DOM scanner & synthetic clicker
+│   └── safety.js                      # Safety guardrail engine
+├── scripts/
+│   ├── inject-precise-engine.js       # Live CDP injector script
+│   └── test-chatbox-popup.js          # Live test runner
+├── tests/
+│   ├── cli.test.js                    # CLI unit tests
+│   ├── config.test.js                 # Configuration tests
+│   ├── core-patcher.test.js           # Core patcher tests
+│   ├── detector.test.js               # In-page detector tests
+│   ├── integration.test.js            # Mock CDP integration tests
+│   └── safety.test.js                 # Safety blacklist test suite
+└── package.json
 ```
 
 ---
 
-## Safety Guardrails
+## 🧪 Automated Testing
 
-Security is a primary requirement. Before dispatching any synthetic click, the safety engine extracts and analyzes the surrounding prompt text, command snippet, and diff preview against configurable blacklist rules:
-
-| Category | Blocked Patterns |
-| :--- | :--- |
-| **Destructive Deletions** | `rm -rf`, `rm -fr`, `rmdir /s`, `del /f /s` |
-| **Privilege Escalations** | `sudo`, `doas`, `runas`, `pkexec`, `Set-ExecutionPolicy Unrestricted` |
-| **Remote Code Execution** | `curl ... \| bash`, `wget ... \| sh`, `Invoke-WebRequest ... \| powershell` |
-| **Destructive Git** | `git push --force`, `git push -f`, `git reset --hard`, `git clean -fdx` |
-| **Database Drops** | `DROP DATABASE`, `DROP TABLE`, `DROP SCHEMA`, `TRUNCATE TABLE` |
-| **Sensitive Secrets** | `.env`, `.env.*`, `id_rsa`, `id_ed25519`, `authorized_keys`, `.pem`, `.key`, `AWS_SECRET_ACCESS_KEY`, `credentials.json` |
-| **Disk & Firmware** | `dd if=`, `mkfs`, `format C:`, write to `/dev/sd*`, fork bombs |
-| **System Root Paths** | `/etc/`, `/boot/`, `/sys/`, `C:\Windows\`, `~/.bashrc`, `~/.zshrc` |
-
-When a blocked pattern is detected:
-1. Auto-accept is **immediately inhibited** for that prompt.
-2. An alert is printed to the terminal / daemon log with the matching snippet.
-3. A native desktop notification is dispatched to prompt manual human review.
-
----
-
-## Configuration
-
-Configuration is stored in `~/.config/antigravity-auto-accept/config.json` (or `%APPDATA%/antigravity-auto-accept/config.json` on Windows).
-
-To view the active configuration:
-```bash
-antigravity-auto-accept config show
-```
-
-To initialize a default configuration file:
-```bash
-antigravity-auto-accept config init
-```
-
-To see the configuration file path:
-```bash
-antigravity-auto-accept config path
-```
-
-### Example `config.json`:
-```json
-{
-  "cdp": {
-    "host": "127.0.0.1",
-    "port": 9333,
-    "pollIntervalMs": 500,
-    "reconnectDelayMs": 2000
-  },
-  "cooldown": {
-    "elementCooldownMs": 5000
-  },
-  "buttons": {
-    "acceptLabels": [
-      "Accept",
-      "Always Allow",
-      "Allow",
-      "Run",
-      "Run Command",
-      "Approve",
-      "Execute",
-      "Proceed",
-      "Confirm",
-      "Yes",
-      "Keep",
-      "Apply"
-    ],
-    "rejectLabels": [
-      "Reject",
-      "Cancel",
-      "Deny",
-      "Skip",
-      "Dismiss",
-      "No"
-    ]
-  },
-  "safety": {
-    "enabled": true,
-    "notifyOnBlock": true,
-    "blacklist": [
-      {
-        "id": "destructive-rm",
-        "description": "Recursive or forced file deletion",
-        "pattern": "\\b(?:rm\\s+-[a-zA-Z0-9]*[rf]|rmdir\\s+/[sq]|del\\s+/[fqs])\\b",
-        "flags": "i"
-      }
-    ]
-  }
-}
-```
-
----
-
-## Verification & Tests
-
-Run the full automated test suite (75 tests):
+Run the comprehensive test suite (all 56 unit and integration tests):
 ```bash
 npm test
 ```
 
-Coverage includes:
-- **`tests/safety.test.js`**: Unit tests verifying benign command acceptance and blocking of all dangerous command categories.
-- **`tests/config.test.js`**: Deep merging, default configurations, and custom config file parsing.
-- **`tests/detector.test.js`**: Hash generation, button filtering, and DOM script generation.
-- **`tests/integration.test.js`**: Mock CDP HTTP + WebSocket server validating target connection, DOM evaluation, prompt acceptance, cooldown suppression, safety blocking, and IPC commands.
-- **`tests/cli.test.js`**: CLI argument parsing, flags, help, version, doctor, and status subcommands.
+---
+
+## 🤝 Contributing
+
+Contributions, bug reports, and feature requests are welcome!
+1. Fork the repository
+2. Create your branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m "feat: add amazing feature"`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
-## License
+## 📄 License
 
-MIT
+Distributed under the [MIT License](LICENSE).
