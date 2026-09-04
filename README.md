@@ -7,7 +7,10 @@
 
 ## 🌟 Key Highlights
 
-- **⚡ Native In-App & Draggable Toggle Button**: Renders a sleek floating pill badge right above the chatbox (`⚡ Auto-Accept: ON` / `⏸️ Auto-Accept: OFF`). Click to toggle anytime, or drag it anywhere on your screen. Remembers state and position in `localStorage`.
+- **⚡ Seamless Status Bar Placement**:
+  - **Antigravity Desktop App**: Placed in the **top status bar**, positioned directly beside the three-dot menu (`titlebar-more-actions`) on the right side.
+  - **Antigravity IDE**: Placed in the **bottom status bar** (VS Code status bar), right alongside language and git indicators.
+  - Single click toggles between active (`⚡ Auto-Accept: ON`) and paused (`⏸️ Auto-Accept: OFF`). Remembers state in `localStorage`.
 - **🎯 100% Precise Auto-Acceptance (Zero Misclicks)**: Targets internal Antigravity component test IDs directly (`run-command-step`, `interaction-continue-button`, `declared-permissions-confirm`, `running-items-panel`). Explicitly ignores settings modals, dropdown menus, sidebars, and file trees.
 - **🛡️ Strict 4-Keyword Safety Guardrail**: Leaves prompts untouched for manual review **strictly** when the command contains:
   1. `sudo` (privilege escalation)
@@ -94,10 +97,10 @@ Directly injects the auto-accept engine and draggable toggle button into the Ant
 2. **Restart Antigravity**:
    Close and relaunch Antigravity.
 3. **Enjoy Zero-Friction Coding**:
-   - You will see the **`⚡ Auto-Accept: ON`** badge right above the chatbox.
-   - All terminal commands and question modals will now be accepted automatically.
+   - In **Antigravity Desktop**: You will see the **`⚡ Auto-Accept: ON`** button in the **top status bar** right beside the three-dot menu on the right.
+   - In **Antigravity IDE**: You will see the **`⚡ Auto-Accept: ON`** indicator in the **bottom status bar**.
+   - All terminal commands, permissions, and question modals are accepted automatically.
    - Click the button to pause anytime (`⏸️ Auto-Accept: OFF`).
-   - Drag the button anywhere you like on your screen.
 
 To remove the patch and restore original application files:
 ```bash
